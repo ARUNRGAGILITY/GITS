@@ -1,0 +1,47 @@
+#!/bin/bash
+# gits - Launch Git Python GUI (Bash script for Linux/macOS)
+# Usage: gits [repository_path]
+# If no path provided, uses current directory
+
+# Get the directory where this script is located
+#SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+SCRIPT_DIR=/d/INSTALLS/GIT_GUI/GITS/bin
+# Path to the Python GUI script
+GUI_SCRIPT="$SCRIPT_DIR/git_python_gui.py"
+
+# Check if the GUI script exists
+if [ ! -f "$GUI_SCRIPT" ]; then
+    echo "Error: git_python_gui.py not found in $SCRIPT_DIR"
+    echo "Please ensure git_python_gui.py is in the same directory as this script."
+    exit 1
+fi
+
+# Check if Python is available
+if ! command -v python &> /dev/null; then
+    if ! command -v python &> /dev/null; then
+        echo "Error: Python not found. Please install Python 3."
+        exit 1
+    else
+        PYTHON_CMD="python"
+    fi
+else
+    PYTHON_CMD="python"
+fi
+
+# Check if gitpython is installed
+if ! $PYTHON_CMD -c "import git" 2>/dev/null; then
+    echo "Error: GitPython not installed. Please install it with:"
+    echo "pip install gitpython"
+    exit 1
+fi
+
+# Launch the GUI with arguments
+if [ $# -eq 0 ]; then
+    # No arguments, use current directory
+    echo "Launching Git GUI in current directory..."
+    $PYTHON_CMD "$GUI_SCRIPT" "$(pwd)"
+else
+    # Pass all arguments to the Python script
+    echo "Launching Git GUI with path: $1"
+    $PYTHON_CMD "$GUI_SCRIPT" "$@"
+fi
