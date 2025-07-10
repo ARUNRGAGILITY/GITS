@@ -14,7 +14,10 @@ from pathlib import Path
 import git
 from datetime import datetime
 import webbrowser
-
+import tempfile
+import threading
+import platform
+import shutil
 class GitPythonGUI:
     def __init__(self, root, repo_path=None):
         self.root = root
@@ -178,7 +181,7 @@ class GitPythonGUI:
                 messagebox.showerror("Invalid Repository", "Selected folder is not a Git repository")
     
     def create_menu_bar(self):
-        """Create menu bar"""
+        """Create menu bar - MODIFIED VERSION"""
         menubar = tk.Menu(self.root)
         self.root.config(menu=menubar)
         
@@ -203,6 +206,7 @@ class GitPythonGUI:
         repo_menu.add_command(label="Create Tag...", command=self.create_tag)
         repo_menu.add_command(label="Switch to Tag...", command=self.switch_to_tag_only)
         repo_menu.add_command(label="Manage Tags...", command=self.manage_tags_enhanced)
+        repo_menu.add_command(label="Rename Tag...", command=self.show_rename_tag_dialog)  # NEW
         
         # History menu
         history_menu = tk.Menu(menubar, tearoff=0)
@@ -213,7 +217,7 @@ class GitPythonGUI:
         history_menu.add_command(label="Tags & Branches", command=self.show_tags_branches)
         history_menu.add_command(label="Commit Details", command=self.show_commit_details)
         history_menu.add_separator()
-        history_menu.add_command(label="Edit Commit Message", command=self.edit_commit_message)
+        history_menu.add_command(label="Edit Commit Message", command=self.edit_commit_message)  # ENHANCED
         
         # View menu
         view_menu = tk.Menu(menubar, tearoff=0)
@@ -225,6 +229,7 @@ class GitPythonGUI:
         help_menu = tk.Menu(menubar, tearoff=0)
         menubar.add_cascade(label="Help", menu=help_menu)
         help_menu.add_command(label="About", command=self.show_about)
+
     
     def create_toolbar(self):
         """Create toolbar with common operations"""
@@ -658,22 +663,24 @@ class GitPythonGUI:
             self.on_tag_select(tags_tree)
     
     def create_tag_context_menu(self, tags_tree):
-        """Create context menu for tags"""
+        """Create context menu for tags - MODIFIED VERSION"""
         self.tag_context_menu = tk.Menu(self.root, tearoff=0)
         self.tag_context_menu.add_command(label="Switch to Tag", 
-                                         command=lambda: self.switch_to_selected_tag(tags_tree))
+                                        command=lambda: self.switch_to_selected_tag(tags_tree))
         self.tag_context_menu.add_command(label="Create Branch from Tag", 
-                                         command=lambda: self.create_branch_from_tag(tags_tree))
+                                        command=lambda: self.create_branch_from_tag(tags_tree))
         self.tag_context_menu.add_separator()
+        self.tag_context_menu.add_command(label="Rename Tag",                    # NEW
+                                        command=lambda: self.rename_tag_from_context(tags_tree))
         self.tag_context_menu.add_command(label="Push Tag to Remote", 
-                                         command=lambda: self.push_selected_tag(tags_tree))
+                                        command=lambda: self.push_selected_tag(tags_tree))
         self.tag_context_menu.add_command(label="Delete Tag", 
-                                         command=lambda: self.delete_selected_tag(tags_tree))
+                                        command=lambda: self.delete_selected_tag(tags_tree))
         self.tag_context_menu.add_separator()
         self.tag_context_menu.add_command(label="View Tag at GitHub", 
-                                         command=lambda: self.view_tag_at_github(tags_tree))
+                                        command=lambda: self.view_tag_at_github(tags_tree))
         self.tag_context_menu.add_command(label="Copy Tag Name", 
-                                         command=lambda: self.copy_tag_name(tags_tree))
+                                        command=lambda: self.copy_tag_name(tags_tree))
         
         tags_tree.bind('<Button-3>', lambda e: self.show_tag_context_menu(e, tags_tree))
     
@@ -1984,9 +1991,109 @@ class GitPythonGUI:
                 
                 history_tree.pack(fill=tk.BOTH, expand=True)
     
+
+    # Enhanced compare with head functionality
     def compare_with_head(self):
-        """Compare file with HEAD"""
-        messagebox.showinfo("Feature", "Compare with HEAD - Feature to be implemented")
+        """Compare file with HEAD - IMPLEMENTED"""
+        selection = self.file_tree.selection()
+        if not selection or not self.repo:
+            messagebox.showwarning("No Selection", "Please select a file to compare")
+            return
+        
+        item = selection[0]
+        file_name = self.file_tree.item(item)['values'][0]
+        
+        tree_selection = self.repo_tree.selection()
+        if not tree_selection:
+            messagebox.showwarning("No Selection", "Please select a folder first")
+            return
+        
+        folder_path = self.repo_tree.item(tree_selection[0])['values'][0]
+        file_path = os.path.join(folder_path, file_name)
+        
+        if not os.path.isfile(file_path):
+            messagebox.showwarning("Not a File", "Please select a file, not a directory")
+            return
+        
+        rel_path = os.path.relpath(file_path, self.repo_path)
+        
+        # Create comparison window
+        compare_window = tk.Toplevel(self.root)
+        compare_window.title(f"Compare with HEAD: {file_name}")
+        compare_window.geometry("1400x800")
+        
+        # Create paned window
+        paned = ttk.PanedWindow(compare_window, orient=tk.HORIZONTAL)
+        paned.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
+        
+        # Left side - HEAD version
+        left_frame = ttk.LabelFrame(paned, text="HEAD Version")
+        paned.add(left_frame, weight=1)
+        
+        left_text = tk.Text(left_frame, font=('Courier', 9), wrap=tk.NONE)
+        left_v_scroll = ttk.Scrollbar(left_frame, orient=tk.VERTICAL, command=left_text.yview)
+        left_h_scroll = ttk.Scrollbar(left_frame, orient=tk.HORIZONTAL, command=left_text.xview)
+        left_text.configure(yscrollcommand=left_v_scroll.set, xscrollcommand=left_h_scroll.set)
+        
+        left_text.grid(row=0, column=0, sticky='nsew')
+        left_v_scroll.grid(row=0, column=1, sticky='ns')
+        left_h_scroll.grid(row=1, column=0, sticky='ew')
+        
+        left_frame.grid_rowconfigure(0, weight=1)
+        left_frame.grid_columnconfigure(0, weight=1)
+        
+        # Right side - working directory version
+        right_frame = ttk.LabelFrame(paned, text="Working Directory")
+        paned.add(right_frame, weight=1)
+        
+        right_text = tk.Text(right_frame, font=('Courier', 9), wrap=tk.NONE)
+        right_v_scroll = ttk.Scrollbar(right_frame, orient=tk.VERTICAL, command=right_text.yview)
+        right_h_scroll = ttk.Scrollbar(right_frame, orient=tk.HORIZONTAL, command=right_text.xview)
+        right_text.configure(yscrollcommand=right_v_scroll.set, xscrollcommand=right_h_scroll.set)
+        
+        right_text.grid(row=0, column=0, sticky='nsew')
+        right_v_scroll.grid(row=0, column=1, sticky='ns')
+        right_h_scroll.grid(row=1, column=0, sticky='ew')
+        
+        right_frame.grid_rowconfigure(0, weight=1)
+        right_frame.grid_columnconfigure(0, weight=1)
+        
+        try:
+            # Get HEAD version
+            try:
+                head_commit = self.repo.head.commit
+                head_content = head_commit.tree[rel_path].data_stream.read().decode('utf-8', errors='replace')
+                left_text.insert('1.0', head_content)
+            except:
+                left_text.insert('1.0', "File not found in HEAD or binary file")
+            
+            # Get working directory version
+            if os.path.exists(file_path):
+                with open(file_path, 'r', encoding='utf-8', errors='replace') as f:
+                    working_content = f.read()
+                    right_text.insert('1.0', working_content)
+            else:
+                right_text.insert('1.0', "File not found in working directory")
+            
+            left_text.config(state=tk.DISABLED)
+            right_text.config(state=tk.DISABLED)
+            
+            # Add diff statistics
+            try:
+                head_lines = left_text.get('1.0', tk.END).split('\n')
+                working_lines = right_text.get('1.0', tk.END).split('\n')
+                
+                stats_frame = ttk.Frame(compare_window)
+                stats_frame.pack(fill=tk.X, padx=10, pady=5)
+                
+                stats_text = f"HEAD: {len(head_lines)} lines | Working: {len(working_lines)} lines"
+                ttk.Label(stats_frame, text=stats_text, font=('TkDefaultFont', 9)).pack()
+            except:
+                pass
+            
+        except Exception as e:
+            messagebox.showerror("Error", f"Failed to compare files: {str(e)}")
+
     
     def create_branch(self):
         """Create new branch"""
@@ -3365,11 +3472,532 @@ Inspired by Simple VCS version control system.
         
         files_tree.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
     
-    # Additional stub methods to complete the interface
-    def edit_commit_message_advanced(self, commit, parent_window):
-        """Advanced commit message editing"""
-        messagebox.showinfo("Feature", "Advanced commit message editing - Feature to be implemented")
     
+    def edit_commit_message(self):
+        """Fixed commit message editing with proper window sizing and error handling"""
+        if not self.repo:
+            messagebox.showerror("Error", "No repository loaded")
+            return
+        
+        # Check if there are any uncommitted changes
+        try:
+            if self.repo.is_dirty():
+                if not messagebox.askyesno("Uncommitted Changes", 
+                                        "You have uncommitted changes. Editing commit messages requires a clean working directory.\n\n" +
+                                        "Do you want to continue anyway? (Changes will be stashed temporarily)"):
+                    return
+        except:
+            pass
+        
+        # Create commit selection window with proper sizing
+        edit_window = tk.Toplevel(self.root)
+        edit_window.title("Edit Commit Message")
+        edit_window.geometry("1200x700")  # Increased height
+        edit_window.minsize(1000, 600)   # Minimum size
+        
+        # Make window resizable
+        edit_window.resizable(True, True)
+        
+        # Header frame
+        header_frame = ttk.Frame(edit_window)
+        header_frame.pack(fill=tk.X, padx=10, pady=5)
+        
+        ttk.Label(header_frame, text="Edit Commit Message", 
+                font=('TkDefaultFont', 14, 'bold')).pack(side=tk.LEFT)
+        
+        # Warning frame - more prominent
+        warning_frame = ttk.LabelFrame(edit_window, text="⚠️ Important Warning")
+        warning_frame.pack(fill=tk.X, padx=10, pady=5)
+        
+        warning_text = tk.Text(warning_frame, height=3, wrap=tk.WORD, 
+                            font=('TkDefaultFont', 9), fg='red', bg='#fff3cd')
+        warning_text.pack(fill=tk.X, padx=5, pady=5)
+        
+        warning_msg = """⚠️ CAUTION: Editing commit messages rewrites Git history!
+    • Only edit messages if you haven't pushed to a shared repository
+    • This will change commit hashes and may affect other developers
+    • Consider the impact before proceeding with historical commits"""
+        
+        warning_text.insert('1.0', warning_msg)
+        warning_text.config(state=tk.DISABLED)
+        
+        # Main content frame
+        main_frame = ttk.Frame(edit_window)
+        main_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=5)
+        
+        # Commits selection frame
+        commits_frame = ttk.LabelFrame(main_frame, text="Select Commit to Edit")
+        commits_frame.pack(fill=tk.BOTH, expand=True, pady=5)
+        
+        # Treeview for commits
+        columns = ('Position', 'Hash', 'Date', 'Author', 'Current Message')
+        commits_tree = ttk.Treeview(commits_frame, columns=columns, show='headings', height=12)
+        
+        # Configure columns with proper widths
+        commits_tree.heading('Position', text='Position')
+        commits_tree.column('Position', width=100, minwidth=80)
+        
+        commits_tree.heading('Hash', text='Hash')
+        commits_tree.column('Hash', width=120, minwidth=100)
+        
+        commits_tree.heading('Date', text='Date')
+        commits_tree.column('Date', width=180, minwidth=150)
+        
+        commits_tree.heading('Author', text='Author')
+        commits_tree.column('Author', width=150, minwidth=120)
+        
+        commits_tree.heading('Current Message', text='Current Message')
+        commits_tree.column('Current Message', width=400, minwidth=300)
+        
+        # Scrollbar for commits
+        commits_scroll = ttk.Scrollbar(commits_frame, orient=tk.VERTICAL, command=commits_tree.yview)
+        commits_tree.configure(yscrollcommand=commits_scroll.set)
+        
+        # Pack commits tree
+        commits_tree.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=5, pady=5)
+        commits_scroll.pack(side=tk.RIGHT, fill=tk.Y, pady=5)
+        
+        # Message editing frame
+        message_frame = ttk.LabelFrame(main_frame, text="Edit Message")
+        message_frame.pack(fill=tk.X, pady=5)
+        
+        # Current message display
+        current_frame = ttk.Frame(message_frame)
+        current_frame.pack(fill=tk.X, padx=5, pady=2)
+        
+        ttk.Label(current_frame, text="Current Message:", font=('TkDefaultFont', 9, 'bold')).pack(anchor=tk.W)
+        current_msg_text = tk.Text(current_frame, height=3, wrap=tk.WORD, state=tk.DISABLED, 
+                                font=('TkDefaultFont', 9), bg='#f8f9fa')
+        current_msg_text.pack(fill=tk.X, pady=2)
+        
+        # New message input
+        new_frame = ttk.Frame(message_frame)
+        new_frame.pack(fill=tk.X, padx=5, pady=2)
+        
+        ttk.Label(new_frame, text="New Message:", font=('TkDefaultFont', 9, 'bold')).pack(anchor=tk.W)
+        new_msg_text = tk.Text(new_frame, height=3, wrap=tk.WORD, font=('TkDefaultFont', 9))
+        new_msg_text.pack(fill=tk.X, pady=2)
+        
+        # Buttons frame - Fixed positioning
+        button_frame = ttk.Frame(edit_window)
+        button_frame.pack(fill=tk.X, padx=10, pady=10, side=tk.BOTTOM)
+        
+        # Populate commits (last 15 commits)
+        try:
+            commits = list(self.repo.iter_commits(max_count=15))
+            for i, commit in enumerate(commits):
+                position = "HEAD" if i == 0 else f"HEAD~{i}"
+                message = commit.message.strip().replace('\n', ' ')
+                if len(message) > 60:
+                    message = message[:60] + "..."
+                
+                # Color code based on position
+                tags = ('head_commit',) if i == 0 else ('normal_commit',)
+                
+                commits_tree.insert('', 'end', values=(
+                    position,
+                    commit.hexsha[:12],
+                    commit.committed_datetime.strftime('%Y-%m-%d %H:%M:%S'),
+                    commit.author.name,
+                    message
+                ), tags=tags)
+            
+            # Configure row colors
+            commits_tree.tag_configure('head_commit', background='#e8f5e8')
+            commits_tree.tag_configure('normal_commit', background='white')
+            
+        except Exception as e:
+            messagebox.showerror("Error", f"Failed to load commits: {str(e)}")
+            edit_window.destroy()
+            return
+        
+        # Selection handler
+        def on_commit_select(event):
+            selection = commits_tree.selection()
+            if selection:
+                values = commits_tree.item(selection[0])['values']
+                commit_hash = values[1]
+                
+                # Find the commit and update text areas
+                for commit in commits:
+                    if commit.hexsha.startswith(commit_hash):
+                        # Update current message
+                        current_msg_text.config(state=tk.NORMAL)
+                        current_msg_text.delete('1.0', tk.END)
+                        current_msg_text.insert('1.0', commit.message.strip())
+                        current_msg_text.config(state=tk.DISABLED)
+                        
+                        # Update new message
+                        new_msg_text.delete('1.0', tk.END)
+                        new_msg_text.insert('1.0', commit.message.strip())
+                        new_msg_text.focus_set()
+                        break
+        
+        commits_tree.bind('<<TreeviewSelect>>', on_commit_select)
+        
+        # Button functions
+        def edit_selected_commit():
+            selection = commits_tree.selection()
+            if not selection:
+                messagebox.showwarning("No Selection", "Please select a commit to edit")
+                return
+            
+            values = commits_tree.item(selection[0])['values']
+            position = values[0]
+            commit_hash = values[1]
+            new_message = new_msg_text.get('1.0', tk.END).strip()
+            
+            if not new_message:
+                messagebox.showerror("Error", "Please enter a new commit message")
+                new_msg_text.focus_set()
+                return
+            
+            # Find the commit
+            selected_commit = None
+            for commit in commits:
+                if commit.hexsha.startswith(commit_hash):
+                    selected_commit = commit
+                    break
+            
+            if not selected_commit:
+                messagebox.showerror("Error", "Could not find selected commit")
+                return
+            
+            # Check if message is different
+            if new_message == selected_commit.message.strip():
+                messagebox.showinfo("No Change", "The message is unchanged")
+                return
+            
+            # Show final confirmation with risk assessment
+            if position == "HEAD":
+                risk_level = "LOW"
+                risk_msg = "This will amend the last commit (HEAD). This is relatively safe if you haven't pushed yet."
+            else:
+                risk_level = "HIGH"
+                risk_msg = f"This will rewrite Git history from {position} onward. This is risky if you've already pushed these commits."
+            
+            confirm_msg = f"""Edit commit message for {position}?
+
+    Risk Level: {risk_level}
+    {risk_msg}
+
+    New message: {new_message[:100]}{'...' if len(new_message) > 100 else ''}
+
+    Are you sure you want to proceed?"""
+            
+            if not messagebox.askyesno("Final Confirmation", confirm_msg):
+                return
+            
+            # Disable window during operation
+            edit_window.config(cursor="wait")
+            for child in edit_window.winfo_children():
+                child.config(state=tk.DISABLED)
+            
+            # Edit the commit message
+            def edit_commit():
+                try:
+                    if position == "HEAD":
+                        # Simple amend for HEAD
+                        self.repo.git.commit('--amend', '-m', new_message)
+                        self.root.after(0, lambda: show_success("HEAD commit message updated successfully!"))
+                    else:
+                        # Interactive rebase for older commits
+                        self.edit_commit_message_safe(selected_commit, new_message)
+                    
+                except Exception as e:
+                    self.root.after(0, lambda: show_error(f"Failed to edit commit message: {str(e)}"))
+            
+            def show_success(msg):
+                edit_window.destroy()
+                messagebox.showinfo("Success", msg)
+                self.refresh_all()
+                if hasattr(self, 'graph_canvas'):
+                    self.draw_commit_graph(self.graph_canvas)
+            
+            def show_error(msg):
+                edit_window.config(cursor="")
+                for child in edit_window.winfo_children():
+                    child.config(state=tk.NORMAL)
+                messagebox.showerror("Error", msg)
+            
+            # Run in background thread
+            threading.Thread(target=edit_commit, daemon=True).start()
+        
+        def cancel_edit():
+            edit_window.destroy()
+        
+        # Create buttons with proper spacing
+        ttk.Button(button_frame, text="Edit Message", command=edit_selected_commit, 
+                style='Success.TButton', width=15).pack(side=tk.LEFT, padx=5)
+        
+        ttk.Button(button_frame, text="Cancel", command=cancel_edit, 
+                width=15).pack(side=tk.RIGHT, padx=5)
+        
+        # Help button
+        def show_help():
+            help_text = """Commit Message Editing Help:
+
+    HEAD Commit (Safe):
+    • Changes only the last commit message
+    • Safe if you haven't pushed yet
+    • Uses 'git commit --amend'
+
+    Historical Commits (Risky):
+    • Rewrites Git history from that point
+    • Changes all subsequent commit hashes
+    • Only do this if you haven't pushed or shared the commits
+    • Uses interactive rebase
+
+    Best Practices:
+    • Only edit unpushed commits
+    • Communicate with team before editing shared history
+    • Always backup important work
+    • Test on a copy of the repository first"""
+            
+            messagebox.showinfo("Help", help_text)
+        
+        ttk.Button(button_frame, text="Help", command=show_help, 
+                width=10).pack(side=tk.LEFT, padx=20)
+        
+        # Select HEAD by default
+        if commits_tree.get_children():
+            first_item = commits_tree.get_children()[0]
+            commits_tree.selection_set(first_item)
+            commits_tree.see(first_item)
+            on_commit_select(None)
+        
+        # Focus on new message text
+        new_msg_text.focus_set()
+
+
+    def edit_commit_message_safe(self, commit, new_message):
+        """Safe interactive rebase for editing commit messages"""
+        try:
+            # Create a temporary script for the rebase
+            temp_dir = tempfile.mkdtemp()
+            script_path = os.path.join(temp_dir, 'git_editor.py')
+            
+            # Create Python script instead of bash for better cross-platform support
+            script_content = f'''#!/usr/bin/env python3
+    import sys
+    import os
+
+    if len(sys.argv) != 2:
+        sys.exit(1)
+
+    filename = sys.argv[1]
+    basename = os.path.basename(filename)
+
+    # Handle git-rebase-todo file
+    if basename == 'git-rebase-todo':
+        with open(filename, 'r') as f:
+            content = f.read()
+        
+        # Replace 'pick' with 'reword' for our target commit
+        lines = content.split('\\n')
+        for i, line in enumerate(lines):
+            if line.startswith('pick {commit.hexsha[:7]}'):
+                lines[i] = line.replace('pick', 'reword', 1)
+                break
+        
+        with open(filename, 'w') as f:
+            f.write('\\n'.join(lines))
+
+    # Handle COMMIT_EDITMSG file
+    elif basename == 'COMMIT_EDITMSG':
+        # Check if this is our target commit by looking at the content
+        with open(filename, 'r') as f:
+            current_content = f.read().strip()
+        
+        # If it matches our target commit's message, replace it
+        if current_content.startswith('{commit.message.strip()[:50]}'):
+            with open(filename, 'w') as f:
+                f.write('{new_message}\\n')
+
+    sys.exit(0)
+    '''
+            
+            with open(script_path, 'w') as f:
+                f.write(script_content)
+            
+            # Make script executable
+            os.chmod(script_path, 0o755)
+            
+            # Get the parent commit
+            parent_commit = commit.parents[0] if commit.parents else None
+            
+            # Set up environment
+            env = os.environ.copy()
+            env['GIT_EDITOR'] = f'python "{script_path}"'
+            env['GIT_SEQUENCE_EDITOR'] = f'python "{script_path}"'
+            
+            # Run interactive rebase
+            if parent_commit:
+                cmd = ['git', 'rebase', '-i', parent_commit.hexsha]
+            else:
+                cmd = ['git', 'rebase', '-i', '--root']
+            
+            # Run the rebase
+            result = subprocess.run(cmd, cwd=self.repo_path, env=env, 
+                                capture_output=True, text=True)
+            
+            # Clean up
+            try:
+                os.unlink(script_path)
+                os.rmdir(temp_dir)
+            except:
+                pass
+            
+            if result.returncode == 0:
+                self.root.after(0, lambda: messagebox.showinfo("Success", 
+                    "Commit message updated successfully!\n\nNote: Git history has been rewritten."))
+            else:
+                error_msg = result.stderr or result.stdout or "Unknown error during rebase"
+                self.root.after(0, lambda: messagebox.showerror("Rebase Error", 
+                    f"Failed to edit commit message:\n\n{error_msg}\n\nYou may need to resolve conflicts manually."))
+            
+        except Exception as e:
+            self.root.after(0, lambda: messagebox.showerror("Error", f"Unexpected error: {str(e)}"))
+
+
+    def is_commit_editing_safe(self):
+        """Check if commit editing is safe (no remote tracking or unpushed commits)"""
+        try:
+            # Check if we have a remote
+            if not self.repo.remotes:
+                return True, "No remote repository configured - safe to edit"
+            
+            # Check if current branch has upstream
+            try:
+                current_branch = self.repo.active_branch
+                if not current_branch.tracking_branch():
+                    return True, "No upstream branch - safe to edit"
+                
+                # Check if there are unpushed commits
+                unpushed = list(self.repo.iter_commits(f'{current_branch.tracking_branch()}..{current_branch}'))
+                if unpushed:
+                    return False, f"You have {len(unpushed)} unpushed commits - editing is risky"
+                else:
+                    return False, "All commits are pushed - editing will rewrite shared history"
+                    
+            except:
+                return True, "Cannot determine upstream status - proceed with caution"
+                
+        except Exception as e:
+            return None, f"Error checking safety: {str(e)}"
+
+
+    def show_commit_edit_safety_dialog(self):
+        """Show dialog about commit editing safety"""
+        safe, message = self.is_commit_editing_safe()
+        
+        if safe is None:
+            messagebox.showwarning("Safety Check Failed", message)
+            return True
+        elif safe:
+            messagebox.showinfo("Safe to Edit", f"✅ {message}")
+            return True
+        else:
+            return messagebox.askyesno("Risky Operation", 
+                f"⚠️ {message}\n\nEditing commit messages will rewrite Git history and may cause issues for other developers.\n\nDo you want to proceed anyway?")
+
+
+    # Enhanced version with safety checks
+    def edit_commit_message_with_safety(self):
+        """Edit commit message with safety checks"""
+        if not self.repo:
+            messagebox.showerror("Error", "No repository loaded")
+            return
+        
+        # Check safety first
+        if not self.show_commit_edit_safety_dialog():
+            return
+        
+        # Proceed with editing
+        self.edit_commit_message()
+
+
+    # Simple alternative for just HEAD commit
+    def edit_head_commit_message(self):
+        """Simple dialog to edit just the HEAD commit message"""
+        if not self.repo:
+            messagebox.showerror("Error", "No repository loaded")
+            return
+        
+        try:
+            head_commit = self.repo.head.commit
+            current_message = head_commit.message.strip()
+            
+            # Simple input dialog
+            new_message = simpledialog.askstring(
+                "Edit HEAD Commit Message",
+                "Enter new commit message:",
+                initialvalue=current_message
+            )
+            
+            if new_message and new_message.strip() != current_message:
+                if messagebox.askyesno("Confirm", "Amend the last commit with new message?"):
+                    self.repo.git.commit('--amend', '-m', new_message.strip())
+                    messagebox.showinfo("Success", "HEAD commit message updated!")
+                    self.refresh_all()
+            
+        except Exception as e:
+            messagebox.showerror("Error", f"Failed to edit commit message: {str(e)}")
+
+
+    def edit_commit_message_interactive(self, commit, new_message):
+        """Edit commit message using interactive rebase"""
+        try:
+            # Create a temporary script for the rebase
+            import tempfile
+            
+            # Get the commit before the one we want to edit
+            parent_commit = commit.parents[0] if commit.parents else None
+            
+            if not parent_commit:
+                # This is the root commit, use --root
+                rebase_cmd = ['git', 'rebase', '--root', '-i']
+            else:
+                rebase_cmd = ['git', 'rebase', '-i', parent_commit.hexsha]
+            
+            # Create environment for the rebase
+            env = os.environ.copy()
+            
+            # Create a custom editor script
+            with tempfile.NamedTemporaryFile(mode='w', suffix='.sh', delete=False) as script_file:
+                script_content = f'''#!/bin/bash
+    # Custom rebase script
+    if [ "$1" = "git-rebase-todo" ]; then
+        # Replace 'pick' with 'reword' for our target commit
+        sed -i 's/pick {commit.hexsha[:7]}/reword {commit.hexsha[:7]}/' "$2"
+    elif [ "$1" = "COMMIT_EDITMSG" ]; then
+        # Replace the commit message
+        echo "{new_message}" > "$2"
+    fi
+    '''
+                script_file.write(script_content)
+                script_path = script_file.name
+            
+            # Make script executable
+            os.chmod(script_path, 0o755)
+            
+            # Set custom editor
+            env['GIT_EDITOR'] = script_path
+            
+            # Run the rebase
+            subprocess.run(rebase_cmd, cwd=self.repo_path, env=env, check=True)
+            
+            # Clean up
+            os.unlink(script_path)
+            
+            messagebox.showinfo("Success", f"Commit message updated successfully!\n\nNote: Git history has been rewritten.")
+            
+        except subprocess.CalledProcessError as e:
+            messagebox.showerror("Rebase Error", f"Failed to edit commit message: {str(e)}")
+        except Exception as e:
+            messagebox.showerror("Error", f"Unexpected error: {str(e)}")
+
+
     def create_branch_from_commit(self, commit, parent_window):
         """Create branch from specific commit"""
         branch_name = simpledialog.askstring("Create Branch", "Enter new branch name:")
@@ -3757,69 +4385,1567 @@ Inspired by Simple VCS version control system.
             self.timeline_details_text.insert('1.0', f"Error loading commit details: {str(e)}")
 
 
-    def edit_commit_message(self, commit, parent_window):
-        """Edit commit message with dialog"""
-        edit_window = tk.Toplevel(parent_window)
-        edit_window.title(f"Edit Commit Message: {commit.hexsha[:8]}")
-        edit_window.geometry("500x300")
-        
-        ttk.Label(edit_window, text="Edit commit message:").pack(pady=5)
-        
-        message_text = tk.Text(edit_window, height=8, wrap=tk.WORD)
-        message_text.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
-        message_text.insert('1.0', commit.message.strip())
-        
-        def save_message():
-            new_message = message_text.get('1.0', tk.END).strip()
-            if new_message != commit.message.strip():
-                if commit == self.repo.head.commit:
-                    if messagebox.askyesno("Confirm", "Edit the last commit message?"):
-                        try:
-                            self.repo.git.commit('--amend', '-m', new_message)
-                            messagebox.showinfo("Success", "Commit message updated")
-                            edit_window.destroy()
-                            parent_window.destroy()
-                            self.refresh_all()
-                            if hasattr(self, 'graph_canvas'):
-                                self.draw_commit_graph(self.graph_canvas)
-                        except Exception as e:
-                            messagebox.showerror("Error", str(e))
-                else:
-                    messagebox.showwarning("Warning", "Can only safely edit the last commit message")
-            else:
-                edit_window.destroy()
-        
-        button_frame = ttk.Frame(edit_window)
-        button_frame.pack(fill=tk.X, padx=10, pady=5)
-        
-        ttk.Button(button_frame, text="Save", command=save_message).pack(side=tk.LEFT, padx=5)
-        ttk.Button(button_frame, text="Cancel", command=edit_window.destroy).pack(side=tk.RIGHT, padx=5)
         
     def show_tags_branches(self):
-        """Show tags and branches overview"""
-        messagebox.showinfo("Feature", "Tags and branches overview - Feature to be implemented")
+        """Show tags and branches overview - IMPLEMENTED"""
+        if not self.repo:
+            messagebox.showerror("Error", "No repository loaded")
+            return
+        
+        overview_window = tk.Toplevel(self.root)
+        overview_window.title("Tags & Branches Overview")
+        overview_window.geometry("1000x700")
+        
+        # Create notebook for tabs
+        notebook = ttk.Notebook(overview_window)
+        notebook.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
+        
+        # Branches tab
+        branches_frame = ttk.Frame(notebook)
+        notebook.add(branches_frame, text="Branches")
+        
+        # Local branches
+        local_frame = ttk.LabelFrame(branches_frame, text="Local Branches")
+        local_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=5)
+        
+        local_columns = ('Branch', 'Current', 'Last Commit', 'Author', 'Date')
+        local_tree = ttk.Treeview(local_frame, columns=local_columns, show='headings')
+        
+        for col in local_columns:
+            local_tree.heading(col, text=col)
+            local_tree.column(col, width=150)
+        
+        local_tree.pack(fill=tk.BOTH, expand=True)
+        
+        # Remote branches
+        remote_frame = ttk.LabelFrame(branches_frame, text="Remote Branches")
+        remote_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=5)
+        
+        remote_columns = ('Branch', 'Remote', 'Last Commit', 'Author', 'Date')
+        remote_tree = ttk.Treeview(remote_frame, columns=remote_columns, show='headings')
+        
+        for col in remote_columns:
+            remote_tree.heading(col, text=col)
+            remote_tree.column(col, width=150)
+        
+        remote_tree.pack(fill=tk.BOTH, expand=True)
+        
+        # Tags tab
+        tags_frame = ttk.Frame(notebook)
+        notebook.add(tags_frame, text="Tags")
+        
+        tags_overview_frame = ttk.LabelFrame(tags_frame, text="All Tags")
+        tags_overview_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=5)
+        
+        tags_columns = ('Tag', 'Type', 'Commit', 'Date', 'Author', 'Message')
+        tags_overview_tree = ttk.Treeview(tags_overview_frame, columns=tags_columns, show='headings')
+        
+        for col in tags_columns:
+            tags_overview_tree.heading(col, text=col)
+            if col == 'Message':
+                tags_overview_tree.column(col, width=200)
+            else:
+                tags_overview_tree.column(col, width=120)
+        
+        tags_overview_tree.pack(fill=tk.BOTH, expand=True)
+        
+        # Populate data
+        try:
+            # Local branches
+            current_branch = None
+            try:
+                current_branch = self.repo.active_branch.name
+            except:
+                pass
+            
+            for branch in self.repo.branches:
+                is_current = "✓" if branch.name == current_branch else ""
+                commit = branch.commit
+                local_tree.insert('', 'end', values=(
+                    branch.name,
+                    is_current,
+                    commit.hexsha[:8],
+                    commit.author.name,
+                    commit.committed_datetime.strftime('%Y-%m-%d %H:%M')
+                ))
+            
+            # Remote branches
+            try:
+                for ref in self.repo.refs:
+                    if ref.name.startswith('origin/') and not ref.name.endswith('/HEAD'):
+                        branch_name = ref.name.replace('origin/', '')
+                        commit = ref.commit
+                        remote_tree.insert('', 'end', values=(
+                            branch_name,
+                            "origin",
+                            commit.hexsha[:8],
+                            commit.author.name,
+                            commit.committed_datetime.strftime('%Y-%m-%d %H:%M')
+                        ))
+            except:
+                pass
+            
+            # Tags
+            for tag in self.repo.tags:
+                commit = tag.commit
+                tag_type = "Annotated" if hasattr(tag, 'tag') and tag.tag else "Lightweight"
+                message = ""
+                try:
+                    if hasattr(tag, 'tag') and tag.tag and tag.tag.message:
+                        message = tag.tag.message.strip()[:50]
+                    else:
+                        message = commit.message.strip()[:50]
+                except:
+                    message = "No message"
+                
+                tags_overview_tree.insert('', 'end', values=(
+                    tag.name,
+                    tag_type,
+                    commit.hexsha[:8],
+                    commit.committed_datetime.strftime('%Y-%m-%d %H:%M'),
+                    commit.author.name,
+                    message
+                ))
+            
+        except Exception as e:
+            messagebox.showerror("Error", f"Failed to load branches/tags: {str(e)}")
     
     def show_commit_details(self):
-        """Show detailed commit information"""
-        messagebox.showinfo("Feature", "Commit details dialog - Feature to be implemented")
-    
-    
-    
-    def view_version_timeline(self):
-        """View version timeline for selected file"""
-        messagebox.showinfo("Feature", "Version timeline - Feature to be implemented")
-    
+        """Show detailed commit information - IMPLEMENTED"""
+        if not self.repo:
+            messagebox.showerror("Error", "No repository loaded")
+            return
+        
+        # Get commit selection
+        commits = list(self.repo.iter_commits(max_count=50))
+        if not commits:
+            messagebox.showinfo("No Commits", "No commits found in repository")
+            return
+        
+        # Create commit selection dialog
+        selection_window = tk.Toplevel(self.root)
+        selection_window.title("Select Commit for Details")
+        selection_window.geometry("800x500")
+        
+        ttk.Label(selection_window, text="Select commit to view details:", 
+                font=('TkDefaultFont', 10, 'bold')).pack(pady=10)
+        
+        # Commits list
+        commits_frame = ttk.Frame(selection_window)
+        commits_frame.pack(fill=tk.BOTH, expand=True, padx=20, pady=10)
+        
+        commits_columns = ('Hash', 'Date', 'Author', 'Message')
+        commits_tree = ttk.Treeview(commits_frame, columns=commits_columns, show='headings')
+        
+        for col in commits_columns:
+            commits_tree.heading(col, text=col)
+            if col == 'Message':
+                commits_tree.column(col, width=300)
+            else:
+                commits_tree.column(col, width=120)
+        
+        commits_scroll = ttk.Scrollbar(commits_frame, orient=tk.VERTICAL, command=commits_tree.yview)
+        commits_tree.configure(yscrollcommand=commits_scroll.set)
+        
+        commits_tree.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        commits_scroll.pack(side=tk.RIGHT, fill=tk.Y)
+        
+        # Populate commits
+        for commit in commits:
+            message = commit.message.strip()[:50]
+            if len(commit.message.strip()) > 50:
+                message += "..."
+            
+            commits_tree.insert('', 'end', values=(
+                commit.hexsha[:8],
+                commit.committed_datetime.strftime('%Y-%m-%d %H:%M'),
+                commit.author.name,
+                message
+            ))
+        
+        def show_selected_commit():
+            selection = commits_tree.selection()
+            if selection:
+                commit_hash = commits_tree.item(selection[0])['values'][0]
+                for commit in commits:
+                    if commit.hexsha.startswith(commit_hash):
+                        selection_window.destroy()
+                        self.open_commit_details(commit)
+                        break
+            else:
+                messagebox.showwarning("No Selection", "Please select a commit")
+        
+        # Buttons
+        button_frame = ttk.Frame(selection_window)
+        button_frame.pack(fill=tk.X, padx=20, pady=10)
+        
+        ttk.Button(button_frame, text="Show Details", command=show_selected_commit).pack(side=tk.LEFT, padx=5)
+        ttk.Button(button_frame, text="Cancel", command=selection_window.destroy).pack(side=tk.RIGHT, padx=5)
+        
+        # Double-click to show details
+        commits_tree.bind('<Double-1>', lambda e: show_selected_commit())
+        
+        # Select first commit
+        if commits_tree.get_children():
+            first_item = commits_tree.get_children()[0]
+            commits_tree.selection_set(first_item)
+            commits_tree.see(first_item)
+
+    def view_file_at_commit(self):
+        """View selected file at a specific commit - IMPLEMENTED"""
+        selection = self.file_tree.selection()
+        if not selection or not self.repo:
+            messagebox.showwarning("No Selection", "Please select a file to view at commit")
+            return
+        
+        item = selection[0]
+        file_name = self.file_tree.item(item)['values'][0]
+        
+        tree_selection = self.repo_tree.selection()
+        if not tree_selection:
+            messagebox.showwarning("No Selection", "Please select a folder first")
+            return
+        
+        folder_path = self.repo_tree.item(tree_selection[0])['values'][0]
+        file_path = os.path.join(folder_path, file_name)
+        
+        if not os.path.isfile(file_path):
+            messagebox.showwarning("Not a File", "Please select a file, not a directory")
+            return
+        
+        rel_path = os.path.relpath(file_path, self.repo_path)
+        
+        # Get commits that contain this file
+        try:
+            commits = list(self.repo.iter_commits(paths=rel_path, max_count=20))
+            if not commits:
+                messagebox.showinfo("No History", f"No commit history found for {file_name}")
+                return
+        except Exception as e:
+            messagebox.showerror("Error", f"Failed to get file history: {str(e)}")
+            return
+        
+        # Create commit selection dialog
+        selection_window = tk.Toplevel(self.root)
+        selection_window.title(f"View {file_name} at Commit")
+        selection_window.geometry("800x500")
+        
+        ttk.Label(selection_window, text=f"Select commit to view {file_name}:", 
+                font=('TkDefaultFont', 10, 'bold')).pack(pady=10)
+        
+        # Commits list
+        commits_frame = ttk.Frame(selection_window)
+        commits_frame.pack(fill=tk.BOTH, expand=True, padx=20, pady=10)
+        
+        commits_columns = ('Hash', 'Date', 'Author', 'Message')
+        commits_tree = ttk.Treeview(commits_frame, columns=commits_columns, show='headings')
+        
+        for col in commits_columns:
+            commits_tree.heading(col, text=col)
+            if col == 'Message':
+                commits_tree.column(col, width=300)
+            else:
+                commits_tree.column(col, width=120)
+        
+        commits_scroll = ttk.Scrollbar(commits_frame, orient=tk.VERTICAL, command=commits_tree.yview)
+        commits_tree.configure(yscrollcommand=commits_scroll.set)
+        
+        commits_tree.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        commits_scroll.pack(side=tk.RIGHT, fill=tk.Y)
+        
+        # Populate commits
+        for commit in commits:
+            message = commit.message.strip()[:50]
+            if len(commit.message.strip()) > 50:
+                message += "..."
+            
+            commits_tree.insert('', 'end', values=(
+                commit.hexsha[:8],
+                commit.committed_datetime.strftime('%Y-%m-%d %H:%M'),
+                commit.author.name,
+                message
+            ))
+        
+        def view_selected_commit():
+            selection = commits_tree.selection()
+            if selection:
+                commit_hash = commits_tree.item(selection[0])['values'][0]
+                for commit in commits:
+                    if commit.hexsha.startswith(commit_hash):
+                        selection_window.destroy()
+                        self.show_file_at_commit(rel_path, commit.hexsha)
+                        break
+            else:
+                messagebox.showwarning("No Selection", "Please select a commit")
+        
+        # Buttons
+        button_frame = ttk.Frame(selection_window)
+        button_frame.pack(fill=tk.X, padx=20, pady=10)
+        
+        ttk.Button(button_frame, text="View File", command=view_selected_commit).pack(side=tk.LEFT, padx=5)
+        ttk.Button(button_frame, text="Cancel", command=selection_window.destroy).pack(side=tk.RIGHT, padx=5)
+        
+        # Double-click to view
+        commits_tree.bind('<Double-1>', lambda e: view_selected_commit())
+        
+        # Select first commit
+        if commits_tree.get_children():
+            first_item = commits_tree.get_children()[0]
+            commits_tree.selection_set(first_item)
+            commits_tree.see(first_item)
+
+
+    def revert_file_to_version(self):
+        """Revert selected file to a specific version - IMPLEMENTED"""
+        selection = self.file_tree.selection()
+        if not selection or not self.repo:
+            messagebox.showwarning("No Selection", "Please select a file to revert")
+            return
+        
+        item = selection[0]
+        file_name = self.file_tree.item(item)['values'][0]
+        
+        tree_selection = self.repo_tree.selection()
+        if not tree_selection:
+            messagebox.showwarning("No Selection", "Please select a folder first")
+            return
+        
+        folder_path = self.repo_tree.item(tree_selection[0])['values'][0]
+        file_path = os.path.join(folder_path, file_name)
+        
+        if not os.path.isfile(file_path):
+            messagebox.showwarning("Not a File", "Please select a file, not a directory")
+            return
+        
+        rel_path = os.path.relpath(file_path, self.repo_path)
+        
+        # Get commits that contain this file
+        try:
+            commits = list(self.repo.iter_commits(paths=rel_path, max_count=20))
+            if not commits:
+                messagebox.showinfo("No History", f"No commit history found for {file_name}")
+                return
+        except Exception as e:
+            messagebox.showerror("Error", f"Failed to get file history: {str(e)}")
+            return
+        
+        # Create revert dialog
+        revert_window = tk.Toplevel(self.root)
+        revert_window.title(f"Revert {file_name} to Version")
+        revert_window.geometry("800x500")
+        
+        # Warning
+        warning_frame = ttk.Frame(revert_window)
+        warning_frame.pack(fill=tk.X, padx=20, pady=10)
+        
+        warning_text = f"⚠️ Warning: This will overwrite the current content of {file_name}"
+        ttk.Label(warning_frame, text=warning_text, foreground='red', 
+                font=('TkDefaultFont', 10, 'bold')).pack()
+        
+        ttk.Label(revert_window, text=f"Select version to revert {file_name} to:", 
+                font=('TkDefaultFont', 10, 'bold')).pack(pady=10)
+        
+        # Commits list
+        commits_frame = ttk.Frame(revert_window)
+        commits_frame.pack(fill=tk.BOTH, expand=True, padx=20, pady=10)
+        
+        commits_columns = ('Version', 'Hash', 'Date', 'Author', 'Message')
+        commits_tree = ttk.Treeview(commits_frame, columns=commits_columns, show='headings')
+        
+        commits_tree.heading('Version', text='Version')
+        commits_tree.column('Version', width=80)
+        
+        for col in commits_columns[1:]:
+            commits_tree.heading(col, text=col)
+            if col == 'Message':
+                commits_tree.column(col, width=300)
+            else:
+                commits_tree.column(col, width=120)
+        
+        commits_scroll = ttk.Scrollbar(commits_frame, orient=tk.VERTICAL, command=commits_tree.yview)
+        commits_tree.configure(yscrollcommand=commits_scroll.set)
+        
+        commits_tree.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        commits_scroll.pack(side=tk.RIGHT, fill=tk.Y)
+        
+        # Populate commits
+        for i, commit in enumerate(commits):
+            version_num = len(commits) - i
+            message = commit.message.strip()[:50]
+            if len(commit.message.strip()) > 50:
+                message += "..."
+            
+            commits_tree.insert('', 'end', values=(
+                version_num,
+                commit.hexsha[:8],
+                commit.committed_datetime.strftime('%Y-%m-%d %H:%M'),
+                commit.author.name,
+                message
+            ))
+        
+        def revert_to_selected():
+            selection = commits_tree.selection()
+            if selection:
+                values = commits_tree.item(selection[0])['values']
+                version_num = values[0]
+                commit_hash = values[1]
+                
+                if messagebox.askyesno("Confirm Revert", 
+                                    f"Revert {file_name} to version {version_num}?\n\n" +
+                                    f"Commit: {commit_hash}\n" +
+                                    "This will overwrite the current file content."):
+                    try:
+                        for commit in commits:
+                            if commit.hexsha.startswith(commit_hash):
+                                # Get file content at this commit
+                                file_content = commit.tree[rel_path].data_stream.read()
+                                
+                                # Write to working directory
+                                with open(file_path, 'wb') as f:
+                                    f.write(file_content)
+                                
+                                messagebox.showinfo("Success", 
+                                                f"{file_name} reverted to version {version_num}")
+                                revert_window.destroy()
+                                self.refresh_all()
+                                break
+                    except Exception as e:
+                        messagebox.showerror("Error", f"Failed to revert file: {str(e)}")
+            else:
+                messagebox.showwarning("No Selection", "Please select a version to revert to")
+        
+        # Buttons
+        button_frame = ttk.Frame(revert_window)
+        button_frame.pack(fill=tk.X, padx=20, pady=10)
+        
+        ttk.Button(button_frame, text="Revert to Selected", command=revert_to_selected,
+                style='Warning.TButton').pack(side=tk.LEFT, padx=5)
+        ttk.Button(button_frame, text="Cancel", command=revert_window.destroy).pack(side=tk.RIGHT, padx=5)
+        
+        # Double-click to revert
+        commits_tree.bind('<Double-1>', lambda e: revert_to_selected())
+        
+        # Select first commit (most recent)
+        if commits_tree.get_children():
+            first_item = commits_tree.get_children()[0]
+            commits_tree.selection_set(first_item)
+            commits_tree.see(first_item)
+
     def show_file_blame(self):
         """Show file blame/annotation"""
-        messagebox.showinfo("Feature", "File blame - Feature to be implemented")
+        selection = self.file_tree.selection()
+        if not selection or not self.repo:
+            messagebox.showwarning("No Selection", "Please select a file to view blame")
+            return
+        
+        item = selection[0]
+        file_name = self.file_tree.item(item)['values'][0]
+        
+        tree_selection = self.repo_tree.selection()
+        if not tree_selection:
+            messagebox.showwarning("No Selection", "Please select a folder first")
+            return
+        
+        folder_path = self.repo_tree.item(tree_selection[0])['values'][0]
+        file_path = os.path.join(folder_path, file_name)
+        
+        if not os.path.isfile(file_path):
+            messagebox.showwarning("Not a File", "Please select a file, not a directory")
+            return
+        
+        rel_path = os.path.relpath(file_path, self.repo_path)
+        
+        # Create blame window
+        blame_window = tk.Toplevel(self.root)
+        blame_window.title(f"Blame: {file_name}")
+        blame_window.geometry("1200x800")
+        
+        # Create paned window
+        paned = ttk.PanedWindow(blame_window, orient=tk.HORIZONTAL)
+        paned.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
+        
+        # Left side - blame info
+        left_frame = ttk.Frame(paned)
+        paned.add(left_frame, weight=1)
+        
+        ttk.Label(left_frame, text="Blame Information", font=('TkDefaultFont', 10, 'bold')).pack(pady=5)
+        
+        # Blame tree
+        blame_columns = ('Line', 'Commit', 'Author', 'Date', 'Code')
+        blame_tree = ttk.Treeview(left_frame, columns=blame_columns, show='headings')
+        
+        # Configure columns
+        blame_tree.heading('Line', text='Line')
+        blame_tree.column('Line', width=50)
+        
+        blame_tree.heading('Commit', text='Commit')
+        blame_tree.column('Commit', width=80)
+        
+        blame_tree.heading('Author', text='Author')
+        blame_tree.column('Author', width=100)
+        
+        blame_tree.heading('Date', text='Date')
+        blame_tree.column('Date', width=100)
+        
+        blame_tree.heading('Code', text='Code')
+        blame_tree.column('Code', width=400)
+        
+        # Scrollbars
+        blame_v_scroll = ttk.Scrollbar(left_frame, orient=tk.VERTICAL, command=blame_tree.yview)
+        blame_h_scroll = ttk.Scrollbar(left_frame, orient=tk.HORIZONTAL, command=blame_tree.xview)
+        blame_tree.configure(yscrollcommand=blame_v_scroll.set, xscrollcommand=blame_h_scroll.set)
+        
+        blame_tree.grid(row=0, column=0, sticky='nsew')
+        blame_v_scroll.grid(row=0, column=1, sticky='ns')
+        blame_h_scroll.grid(row=1, column=0, sticky='ew')
+        
+        left_frame.grid_rowconfigure(0, weight=1)
+        left_frame.grid_columnconfigure(0, weight=1)
+        
+        # Right side - commit details
+        right_frame = ttk.Frame(paned)
+        paned.add(right_frame, weight=1)
+        
+        ttk.Label(right_frame, text="Commit Details", font=('TkDefaultFont', 10, 'bold')).pack(pady=5)
+        
+        # Details text
+        details_text = tk.Text(right_frame, wrap=tk.WORD, height=20)
+        details_scroll = ttk.Scrollbar(right_frame, orient=tk.VERTICAL, command=details_text.yview)
+        details_text.configure(yscrollcommand=details_scroll.set)
+        
+        details_text.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        details_scroll.pack(side=tk.RIGHT, fill=tk.Y)
+        
+        # Get blame information
+        try:
+            blame_info = self.repo.blame('HEAD', rel_path)
+            
+            line_number = 1
+            for commit, lines in blame_info:
+                for line in lines:
+                    # Clean up line content
+                    line_content = line.rstrip('\n\r')
+                    if len(line_content) > 60:
+                        line_content = line_content[:60] + "..."
+                    
+                    blame_tree.insert('', 'end', values=(
+                        line_number,
+                        commit.hexsha[:8],
+                        commit.author.name,
+                        commit.committed_datetime.strftime('%Y-%m-%d'),
+                        line_content
+                    ))
+                    line_number += 1
+            
+            # Selection handler
+            def on_blame_select(event):
+                selection = blame_tree.selection()
+                if selection:
+                    values = blame_tree.item(selection[0])['values']
+                    commit_hash = values[1]
+                    
+                    # Find the commit
+                    for commit, lines in blame_info:
+                        if commit.hexsha.startswith(commit_hash):
+                            details_text.delete('1.0', tk.END)
+                            
+                            details = f"Commit: {commit.hexsha}\n"
+                            details += f"Author: {commit.author.name} <{commit.author.email}>\n"
+                            details += f"Date: {commit.committed_datetime}\n"
+                            details += f"Message:\n{commit.message.strip()}\n\n"
+                            
+                            # Show changes in this commit
+                            if commit.parents:
+                                try:
+                                    diffs = commit.parents[0].diff(commit, paths=rel_path)
+                                    if diffs:
+                                        details += "Changes in this file:\n"
+                                        details += "-" * 30 + "\n"
+                                        for diff in diffs:
+                                            if diff.diff:
+                                                details += diff.diff.decode('utf-8', errors='replace')
+                                except:
+                                    details += "Could not show diff\n"
+                            
+                            details_text.insert('1.0', details)
+                            break
+            
+            blame_tree.bind('<<TreeviewSelect>>', on_blame_select)
+            
+        except Exception as e:
+            messagebox.showerror("Error", f"Failed to get blame information: {str(e)}")
+            blame_tree.insert('', 'end', values=('Error', '', '', '', str(e)))
+
+    def view_version_timeline(self):
+        """View version timeline for selected file"""
+        selection = self.file_tree.selection()
+        if not selection or not self.repo:
+            messagebox.showwarning("No Selection", "Please select a file to view timeline")
+            return
+        
+        item = selection[0]
+        file_name = self.file_tree.item(item)['values'][0]
+        
+        tree_selection = self.repo_tree.selection()
+        if not tree_selection:
+            messagebox.showwarning("No Selection", "Please select a folder first")
+            return
+        
+        folder_path = self.repo_tree.item(tree_selection[0])['values'][0]
+        file_path = os.path.join(folder_path, file_name)
+        
+        if not os.path.isfile(file_path):
+            messagebox.showwarning("Not a File", "Please select a file, not a directory")
+            return
+        
+        rel_path = os.path.relpath(file_path, self.repo_path)
+        
+        # Create timeline window
+        timeline_window = tk.Toplevel(self.root)
+        timeline_window.title(f"Version Timeline: {file_name}")
+        timeline_window.geometry("1400x800")
+        
+        # Create paned window
+        paned = ttk.PanedWindow(timeline_window, orient=tk.HORIZONTAL)
+        paned.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
+        
+        # Left side - timeline
+        left_frame = ttk.Frame(paned)
+        paned.add(left_frame, weight=1)
+        
+        ttk.Label(left_frame, text=f"Timeline for: {file_name}", font=('TkDefaultFont', 10, 'bold')).pack(pady=5)
+        
+        # Timeline tree
+        timeline_columns = ('Version', 'Commit', 'Date', 'Author', 'Message', 'Changes')
+        timeline_tree = ttk.Treeview(left_frame, columns=timeline_columns, show='headings')
+        
+        # Configure columns
+        for col in timeline_columns:
+            timeline_tree.heading(col, text=col)
+            if col == 'Version':
+                timeline_tree.column(col, width=70)
+            elif col == 'Commit':
+                timeline_tree.column(col, width=80)
+            elif col == 'Changes':
+                timeline_tree.column(col, width=80)
+            else:
+                timeline_tree.column(col, width=120)
+        
+        # Scrollbars
+        timeline_v_scroll = ttk.Scrollbar(left_frame, orient=tk.VERTICAL, command=timeline_tree.yview)
+        timeline_h_scroll = ttk.Scrollbar(left_frame, orient=tk.HORIZONTAL, command=timeline_tree.xview)
+        timeline_tree.configure(yscrollcommand=timeline_v_scroll.set, xscrollcommand=timeline_h_scroll.set)
+        
+        timeline_tree.grid(row=0, column=0, sticky='nsew')
+        timeline_v_scroll.grid(row=0, column=1, sticky='ns')
+        timeline_h_scroll.grid(row=1, column=0, sticky='ew')
+        
+        left_frame.grid_rowconfigure(0, weight=1)
+        left_frame.grid_columnconfigure(0, weight=1)
+        
+        # Right side - file content
+        right_frame = ttk.Frame(paned)
+        paned.add(right_frame, weight=2)
+        
+        ttk.Label(right_frame, text="File Content at Selected Version", font=('TkDefaultFont', 10, 'bold')).pack(pady=5)
+        
+        # File content text
+        content_text = tk.Text(right_frame, wrap=tk.NONE, font=('Courier', 10))
+        content_v_scroll = ttk.Scrollbar(right_frame, orient=tk.VERTICAL, command=content_text.yview)
+        content_h_scroll = ttk.Scrollbar(right_frame, orient=tk.HORIZONTAL, command=content_text.xview)
+        content_text.configure(yscrollcommand=content_v_scroll.set, xscrollcommand=content_h_scroll.set)
+        
+        content_text.grid(row=0, column=0, sticky='nsew')
+        content_v_scroll.grid(row=0, column=1, sticky='ns')
+        content_h_scroll.grid(row=1, column=0, sticky='ew')
+        
+        right_frame.grid_rowconfigure(0, weight=1)
+        right_frame.grid_columnconfigure(0, weight=1)
+        
+        # Get file history
+        try:
+            commits = list(self.repo.iter_commits(paths=rel_path))
+            
+            if not commits:
+                messagebox.showinfo("No History", f"No version history found for {file_name}")
+                timeline_window.destroy()
+                return
+            
+            # Populate timeline
+            for i, commit in enumerate(commits):
+                version_num = len(commits) - i
+                
+                # Get changes info
+                changes_info = "Initial"
+                if commit.parents:
+                    try:
+                        diffs = commit.parents[0].diff(commit, paths=rel_path)
+                        if diffs and diffs[0].diff:
+                            diff_text = diffs[0].diff.decode('utf-8', errors='replace')
+                            additions = diff_text.count('\n+')
+                            deletions = diff_text.count('\n-')
+                            changes_info = f"+{additions} -{deletions}"
+                    except:
+                        changes_info = "Modified"
+                
+                timeline_tree.insert('', 'end', values=(
+                    version_num,
+                    commit.hexsha[:8],
+                    commit.committed_datetime.strftime('%Y-%m-%d %H:%M'),
+                    commit.author.name,
+                    commit.message.strip()[:40] + ("..." if len(commit.message.strip()) > 40 else ""),
+                    changes_info
+                ))
+            
+            # Selection handler
+            def on_timeline_select(event):
+                selection = timeline_tree.selection()
+                if selection:
+                    values = timeline_tree.item(selection[0])['values']
+                    commit_hash = values[1]
+                    
+                    # Find the commit
+                    for commit in commits:
+                        if commit.hexsha.startswith(commit_hash):
+                            content_text.delete('1.0', tk.END)
+                            
+                            try:
+                                # Get file content at this commit
+                                file_content = commit.tree[rel_path].data_stream.read().decode('utf-8', errors='replace')
+                                content_text.insert('1.0', file_content)
+                            except:
+                                content_text.insert('1.0', "Could not read file content (binary file or file not found)")
+                            break
+            
+            timeline_tree.bind('<<TreeviewSelect>>', on_timeline_select)
+            
+            # Context menu for timeline
+            timeline_menu = tk.Menu(timeline_window, tearoff=0)
+            timeline_menu.add_command(label="View Full Commit", 
+                                    command=lambda: self.view_full_commit_from_timeline(timeline_tree, commits))
+            timeline_menu.add_command(label="Compare with Current", 
+                                    command=lambda: self.compare_timeline_with_current(timeline_tree, commits, rel_path))
+            timeline_menu.add_command(label="Revert to This Version", 
+                                    command=lambda: self.revert_to_timeline_version(timeline_tree, commits, rel_path))
+            
+            def show_timeline_menu(event):
+                try:
+                    timeline_menu.tk_popup(event.x_root, event.y_root)
+                finally:
+                    timeline_menu.grab_release()
+            
+            timeline_tree.bind('<Button-3>', show_timeline_menu)
+            
+            # Select latest version
+            if timeline_tree.get_children():
+                first_item = timeline_tree.get_children()[0]
+                timeline_tree.selection_set(first_item)
+                timeline_tree.see(first_item)
+                on_timeline_select(None)
+            
+        except Exception as e:
+            messagebox.showerror("Error", f"Failed to get file timeline: {str(e)}")
+
+    def show_rename_tag_dialog(self):
+        """Show dialog to rename tags"""
+        if not self.repo:
+            messagebox.showerror("Error", "No repository loaded")
+            return
+        
+        tags = list(self.repo.tags)
+        if not tags:
+            messagebox.showwarning("No Tags", "No tags found in repository")
+            return
+        
+        # Create rename dialog
+        rename_window = tk.Toplevel(self.root)
+        rename_window.title("Rename Tags")
+        rename_window.geometry("600x400")
+        
+        ttk.Label(rename_window, text="Select tag to rename:", font=('TkDefaultFont', 10, 'bold')).pack(pady=10)
+        
+        # Tags list
+        tags_frame = ttk.Frame(rename_window)
+        tags_frame.pack(fill=tk.BOTH, expand=True, padx=20, pady=10)
+        
+        tags_listbox = tk.Listbox(tags_frame, font=('TkDefaultFont', 10))
+        tags_scroll = ttk.Scrollbar(tags_frame, orient=tk.VERTICAL, command=tags_listbox.yview)
+        tags_listbox.configure(yscrollcommand=tags_scroll.set)
+        
+        # Populate tags
+        for tag in sorted(tags, key=lambda t: t.name):
+            tags_listbox.insert(tk.END, tag.name)
+        
+        tags_listbox.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        tags_scroll.pack(side=tk.RIGHT, fill=tk.Y)
+        
+        # Rename input
+        input_frame = ttk.Frame(rename_window)
+        input_frame.pack(fill=tk.X, padx=20, pady=10)
+        
+        ttk.Label(input_frame, text="New tag name:").pack(anchor=tk.W)
+        new_name_var = tk.StringVar()
+        new_name_entry = ttk.Entry(input_frame, textvariable=new_name_var, width=40)
+        new_name_entry.pack(fill=tk.X, pady=5)
+        
+        # Update entry when selection changes
+        def on_tag_select(event):
+            selection = tags_listbox.curselection()
+            if selection:
+                selected_tag = tags_listbox.get(selection[0])
+                new_name_var.set(selected_tag)
+        
+        tags_listbox.bind('<<ListboxSelect>>', on_tag_select)
+        
+        def rename_selected_tag():
+            selection = tags_listbox.curselection()
+            if not selection:
+                messagebox.showwarning("No Selection", "Please select a tag to rename")
+                return
+            
+            old_name = tags_listbox.get(selection[0])
+            new_name = new_name_var.get().strip()
+            
+            if self.rename_tag(old_name, new_name):
+                rename_window.destroy()
+                self.refresh_all()
+        
+        # Buttons
+        button_frame = ttk.Frame(rename_window)
+        button_frame.pack(fill=tk.X, padx=20, pady=10)
+        
+        ttk.Button(button_frame, text="Rename", command=rename_selected_tag, 
+                style='Warning.TButton').pack(side=tk.LEFT, padx=5)
+        ttk.Button(button_frame, text="Cancel", command=rename_window.destroy).pack(side=tk.RIGHT, padx=5)
+        
+        # Select first tag
+        if tags_listbox.size() > 0:
+            tags_listbox.selection_set(0)
+            on_tag_select(None)
+        
+        new_name_entry.focus()
+
     
-    def view_file_at_commit(self):
-        """View selected file at a specific commit"""
-        messagebox.showinfo("Feature", "View file at commit - Feature to be implemented")
     
-    def revert_file_to_version(self):
-        """Revert selected file to a specific version"""
-        messagebox.showinfo("Feature", "Revert file to version - Feature to be implemented")
+    def rename_tag(self, old_tag_name, new_tag_name=None):
+        """Rename a tag"""
+        if not self.repo:
+            messagebox.showerror("Error", "No repository loaded")
+            return False
+        
+        # Get new tag name if not provided
+        if not new_tag_name:
+            new_tag_name = simpledialog.askstring("Rename Tag", 
+                                                f"Enter new name for tag '{old_tag_name}':",
+                                                initialvalue=old_tag_name)
+        
+        if not new_tag_name or new_tag_name == old_tag_name:
+            return False
+        
+        # Validate new tag name
+        if not new_tag_name.replace('.', '').replace('-', '').replace('_', '').isalnum():
+            messagebox.showerror("Error", "Tag name should contain only letters, numbers, dots, hyphens, and underscores")
+            return False
+        
+        # Check if new tag name already exists
+        if new_tag_name in [tag.name for tag in self.repo.tags]:
+            messagebox.showerror("Error", f"Tag '{new_tag_name}' already exists")
+            return False
+        
+        try:
+            # Get the old tag
+            old_tag = self.repo.tags[old_tag_name]
+            
+            # Create new tag at the same commit
+            if hasattr(old_tag, 'tag') and old_tag.tag:
+                # Annotated tag
+                message = old_tag.tag.message if old_tag.tag.message else f"Renamed from {old_tag_name}"
+                self.repo.create_tag(new_tag_name, ref=old_tag.commit, message=message)
+            else:
+                # Lightweight tag
+                self.repo.create_tag(new_tag_name, ref=old_tag.commit)
+            
+            # Delete old tag
+            self.repo.delete_tag(old_tag_name)
+            
+            # Ask about remote operations
+            if messagebox.askyesno("Remote Operations", 
+                                f"Tag renamed locally. Do you want to update the remote?\n\n" +
+                                f"This will:\n" +
+                                f"1. Delete '{old_tag_name}' from remote\n" +
+                                f"2. Push '{new_tag_name}' to remote"):
+                try:
+                    # Delete old tag from remote
+                    self.repo.git.push('origin', f':refs/tags/{old_tag_name}')
+                    # Push new tag to remote
+                    self.repo.git.push('origin', new_tag_name)
+                    messagebox.showinfo("Success", f"Tag renamed from '{old_tag_name}' to '{new_tag_name}' and updated on remote")
+                except Exception as e:
+                    messagebox.showwarning("Remote Update Failed", 
+                                        f"Tag renamed locally but failed to update remote: {str(e)}")
+            else:
+                messagebox.showinfo("Success", f"Tag renamed from '{old_tag_name}' to '{new_tag_name}'")
+            
+            return True
+            
+        except Exception as e:
+            messagebox.showerror("Error", f"Failed to rename tag: {str(e)}")
+            return False
+
+
+    # Additional helper method for tag context menu
+    def rename_tag_from_context(self, tags_tree):
+        """Rename tag from context menu"""
+        selection = tags_tree.selection()
+        if selection:
+            tag_name = tags_tree.item(selection[0])['values'][0]
+            if self.rename_tag(tag_name):
+                self.refresh_tags_list(tags_tree)
+
+
+
+    def view_full_commit_from_timeline(self, tree, commits):
+        """View full commit details from timeline"""
+        selection = tree.selection()
+        if selection:
+            values = tree.item(selection[0])['values']
+            commit_hash = values[1]
+            
+            for commit in commits:
+                if commit.hexsha.startswith(commit_hash):
+                    self.open_commit_details(commit)
+                break
+
+
+    def compare_timeline_with_current(self, tree, commits, rel_path):
+        """Compare timeline version with current"""
+        selection = tree.selection()
+        if selection:
+            values = tree.item(selection[0])['values']
+            commit_hash = values[1]
+            
+            for commit in commits:
+                if commit.hexsha.startswith(commit_hash):
+                    self.compare_file_with_current_detailed(rel_path, commit)
+                    break
+
+
+    def revert_to_timeline_version(self, tree, commits, rel_path):
+        """Revert file to timeline version"""
+        selection = tree.selection()
+        if selection:
+            values = tree.item(selection[0])['values']
+            commit_hash = values[1]
+            version_num = values[0]
+            
+            if messagebox.askyesno("Confirm Revert", 
+                                f"Revert file to version {version_num} ({commit_hash})?\n\n" +
+                                "This will overwrite the current file content."):
+                try:
+                    for commit in commits:
+                        if commit.hexsha.startswith(commit_hash):
+                            # Get file content at this commit
+                            file_content = commit.tree[rel_path].data_stream.read()
+                            
+                            # Write to working directory
+                            full_path = os.path.join(self.repo_path, rel_path)
+                            with open(full_path, 'wb') as f:
+                                f.write(file_content)
+                            
+                            messagebox.showinfo("Success", f"File reverted to version {version_num}")
+                            self.refresh_all()
+                            break
+                except Exception as e:
+                    messagebox.showerror("Error", f"Failed to revert file: {str(e)}")
+
+
+    def compare_file_with_current_detailed(self, rel_path, commit):
+        """Detailed comparison between commit version and current"""
+        compare_window = tk.Toplevel(self.root)
+        compare_window.title(f"Compare: {os.path.basename(rel_path)}")
+        compare_window.geometry("1400x800")
+        
+        # Create paned window
+        paned = ttk.PanedWindow(compare_window, orient=tk.HORIZONTAL)
+        paned.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
+        
+        # Left side - commit version
+        left_frame = ttk.LabelFrame(paned, text=f"Version at {commit.hexsha[:8]}")
+        paned.add(left_frame, weight=1)
+        
+        left_text = tk.Text(left_frame, font=('Courier', 9), wrap=tk.NONE)
+        left_v_scroll = ttk.Scrollbar(left_frame, orient=tk.VERTICAL, command=left_text.yview)
+        left_h_scroll = ttk.Scrollbar(left_frame, orient=tk.HORIZONTAL, command=left_text.xview)
+        left_text.configure(yscrollcommand=left_v_scroll.set, xscrollcommand=left_h_scroll.set)
+        
+        left_text.grid(row=0, column=0, sticky='nsew')
+        left_v_scroll.grid(row=0, column=1, sticky='ns')
+        left_h_scroll.grid(row=1, column=0, sticky='ew')
+        
+        left_frame.grid_rowconfigure(0, weight=1)
+        left_frame.grid_columnconfigure(0, weight=1)
+        
+        # Right side - current version
+        right_frame = ttk.LabelFrame(paned, text="Current Version")
+        paned.add(right_frame, weight=1)
+        
+        right_text = tk.Text(right_frame, font=('Courier', 9), wrap=tk.NONE)
+        right_v_scroll = ttk.Scrollbar(right_frame, orient=tk.VERTICAL, command=right_text.yview)
+        right_h_scroll = ttk.Scrollbar(right_frame, orient=tk.HORIZONTAL, command=right_text.xview)
+        right_text.configure(yscrollcommand=right_v_scroll.set, xscrollcommand=right_h_scroll.set)
+        
+        right_text.grid(row=0, column=0, sticky='nsew')
+        right_v_scroll.grid(row=0, column=1, sticky='ns')
+        right_h_scroll.grid(row=1, column=0, sticky='ew')
+        
+        right_frame.grid_rowconfigure(0, weight=1)
+        right_frame.grid_columnconfigure(0, weight=1)
+        
+        try:
+            # Get commit version
+            try:
+                commit_content = commit.tree[rel_path].data_stream.read().decode('utf-8', errors='replace')
+                left_text.insert('1.0', commit_content)
+            except:
+                left_text.insert('1.0', "Could not read file content (binary file or file not found)")
+            
+            # Get current version
+            current_path = os.path.join(self.repo_path, rel_path)
+            if os.path.exists(current_path):
+                with open(current_path, 'r', encoding='utf-8', errors='replace') as f:
+                    current_content = f.read()
+                    right_text.insert('1.0', current_content)
+            else:
+                right_text.insert('1.0', "File not found in current working directory")
+            
+            left_text.config(state=tk.DISABLED)
+            right_text.config(state=tk.DISABLED)
+            
+        except Exception as e:
+            messagebox.showerror("Error", f"Failed to compare files: {str(e)}")
+
+
+
+
+
+
+
+
+##
+    
+    def edit_commit_message_safe_fixed(self, commit, new_message):
+        """Fixed interactive rebase for editing commit messages - much more robust"""
+        try:
+            # Method 1: Try the simple git command approach first
+            try:
+                # For commits that are 1-2 positions back, try simpler approach
+                commits_from_head = list(self.repo.iter_commits(max_count=10))
+                commit_position = None
+                
+                for i, c in enumerate(commits_from_head):
+                    if c.hexsha == commit.hexsha:
+                        commit_position = i
+                        break
+                
+                if commit_position is not None and commit_position <= 2:
+                    # Try the simpler approach for recent commits
+                    result = self.try_simple_reword(commit, new_message, commit_position)
+                    if result:
+                        return
+                
+            except Exception as e:
+                print(f"Simple reword failed: {e}")
+            
+            # Method 2: Use git filter-branch (more reliable)
+            try:
+                result = self.try_filter_branch_reword(commit, new_message)
+                if result:
+                    return
+            except Exception as e:
+                print(f"Filter-branch failed: {e}")
+            
+            # Method 3: Manual interactive rebase with better script
+            self.try_interactive_rebase_fixed(commit, new_message)
+            
+        except Exception as e:
+            self.root.after(0, lambda: messagebox.showerror("Error", f"All rebase methods failed: {str(e)}"))
+
+
+    def try_simple_reword(self, commit, new_message, position):
+        """Try simple reword for recent commits"""
+        try:
+            if position == 0:
+                # HEAD commit - use amend
+                self.repo.git.commit('--amend', '-m', new_message)
+                self.root.after(0, lambda: messagebox.showinfo("Success", "HEAD commit message updated!"))
+                self.root.after(0, self.refresh_all)
+                return True
+                
+            elif position == 1:
+                # Second commit - use reset and recommit
+                if messagebox.askyesno("Confirm Method", 
+                                    "This will use git reset method. Your working directory must be clean. Continue?"):
+                    
+                    # Get the current HEAD
+                    original_head = self.repo.head.commit.hexsha
+                    
+                    try:
+                        # Reset to the commit before the one we want to edit
+                        target_commit = commit.parents[0] if commit.parents else None
+                        if target_commit:
+                            self.repo.git.reset('--soft', target_commit.hexsha)
+                            
+                            # Recommit with new message
+                            self.repo.git.commit('-m', new_message)
+                            
+                            # Cherry-pick the HEAD commit
+                            self.repo.git.cherry_pick(original_head)
+                            
+                            self.root.after(0, lambda: messagebox.showinfo("Success", "Commit message updated using reset method!"))
+                            self.root.after(0, self.refresh_all)
+                            return True
+                        
+                    except Exception as e:
+                        # Restore original state
+                        try:
+                            self.repo.git.reset('--hard', original_head)
+                        except:
+                            pass
+                        raise e
+            
+            return False
+            
+        except Exception as e:
+            print(f"Simple reword failed: {e}")
+            return False
+
+
+    def try_filter_branch_reword(self, commit, new_message):
+        """Try using git filter-branch to rewrite commit message"""
+        try:
+            # Create a backup branch first
+            backup_branch = f"backup-{commit.hexsha[:8]}"
+            self.repo.create_head(backup_branch)
+            
+            # Create message filter script
+            script_content = f'''#!/bin/bash
+if [ "$GIT_COMMIT" = "{commit.hexsha}" ]; then
+    echo '{new_message}'
+else
+    cat
+fi
+'''
+
+            
+            # Create temporary script file
+            temp_dir = tempfile.mkdtemp()
+            script_path = os.path.join(temp_dir, 'msg_filter.sh')
+            
+            with open(script_path, 'w') as f:
+                f.write(script_content)
+            
+            # Make executable
+            os.chmod(script_path, 0o755)
+            
+            # Run filter-branch
+            env = os.environ.copy()
+            cmd = ['git', 'filter-branch', '-f', '--msg-filter', script_path, '--', '--all']
+            
+            result = subprocess.run(cmd, cwd=self.repo_path, env=env, 
+                                capture_output=True, text=True, timeout=60)
+            
+            # Clean up
+            try:
+                shutil.rmtree(temp_dir)
+            except:
+                pass
+            
+            if result.returncode == 0:
+                # Delete backup branch
+                self.repo.delete_head(backup_branch)
+                
+                self.root.after(0, lambda: messagebox.showinfo("Success", 
+                    "Commit message updated using filter-branch!"))
+                self.root.after(0, self.refresh_all)
+                return True
+            else:
+                # Keep backup branch for safety
+                error_msg = result.stderr or "Filter-branch failed"
+                self.root.after(0, lambda: messagebox.showerror("Filter-branch Failed", 
+                    f"Error: {error_msg}\n\nBackup branch '{backup_branch}' created for safety."))
+                return False
+                
+        except Exception as e:
+            print(f"Filter-branch method failed: {e}")
+            return False
+
+
+    def try_interactive_rebase_fixed(self, commit, new_message):
+        """Fixed interactive rebase with better error handling"""
+        try:
+            # Create a more robust rebase script
+            temp_dir = tempfile.mkdtemp()
+            
+            # Create the editor script based on platform
+            if platform.system() == "Windows":
+                script_path = os.path.join(temp_dir, 'git_editor.bat')
+                script_content = f'''@echo off
+    set "FILE=%~1"
+    set "BASENAME=%~nx1"
+
+    if "%BASENAME%"=="git-rebase-todo" (
+        powershell -Command "(Get-Content '%FILE%') | ForEach-Object {{ $_ -replace '^pick {commit.hexsha[:7]}', 'reword {commit.hexsha[:7]}' }} | Set-Content '%FILE%'"
+        exit /b 0
+    )
+
+    if "%BASENAME%"=="COMMIT_EDITMSG" (
+        echo {new_message.replace('"', '""')} > "%FILE%"
+        exit /b 0
+    )
+
+    exit /b 0
+    '''
+            else:
+                script_path = os.path.join(temp_dir, 'git_editor.sh')
+                script_content = f'''#!/bin/bash
+    FILE="$1"
+    BASENAME=$(basename "$FILE")
+
+    if [ "$BASENAME" = "git-rebase-todo" ]; then
+        sed -i.bak 's/^pick {commit.hexsha[:7]}/reword {commit.hexsha[:7]}/' "$FILE"
+        exit 0
+    fi
+
+    if [ "$BASENAME" = "COMMIT_EDITMSG" ]; then
+        echo '{new_message}' > "$FILE"
+        exit 0
+    fi
+
+    exit 0
+    '''
+            
+            # Write script
+            with open(script_path, 'w', newline='\n') as f:
+                f.write(script_content)
+            
+            # Make executable (Unix-like systems)
+            if platform.system() != "Windows":
+                os.chmod(script_path, 0o755)
+            
+            # Set up environment
+            env = os.environ.copy()
+            env['GIT_EDITOR'] = script_path
+            env['GIT_SEQUENCE_EDITOR'] = script_path
+            
+            # Determine rebase command
+            if commit.parents:
+                parent_commit = commit.parents[0]
+                cmd = ['git', 'rebase', '-i', parent_commit.hexsha]
+            else:
+                cmd = ['git', 'rebase', '-i', '--root']
+            
+            # Show progress dialog
+            progress_window = tk.Toplevel(self.root)
+            progress_window.title("Rebasing...")
+            progress_window.geometry("400x150")
+            progress_window.transient(self.root)
+            progress_window.grab_set()
+            
+            ttk.Label(progress_window, text="Performing interactive rebase...", 
+                    font=('TkDefaultFont', 10)).pack(pady=20)
+            
+            progress_bar = ttk.Progressbar(progress_window, mode='indeterminate')
+            progress_bar.pack(pady=10, padx=20, fill=tk.X)
+            progress_bar.start()
+            
+            status_var = tk.StringVar(value="Starting rebase...")
+            ttk.Label(progress_window, textvariable=status_var).pack(pady=5)
+            
+            def run_rebase():
+                try:
+                    status_var.set("Running git rebase...")
+                    
+                    # Run the rebase
+                    result = subprocess.run(cmd, cwd=self.repo_path, env=env,
+                                        capture_output=True, text=True, timeout=120)
+                    
+                    # Clean up temp files
+                    try:
+                        shutil.rmtree(temp_dir)
+                    except:
+                        pass
+                    
+                    if result.returncode == 0:
+                        self.root.after(0, lambda: show_rebase_success())
+                    else:
+                        error_output = result.stderr or result.stdout or "Unknown rebase error"
+                        self.root.after(0, lambda: show_rebase_error(error_output))
+                        
+                except subprocess.TimeoutExpired:
+                    self.root.after(0, lambda: show_rebase_error("Rebase timed out"))
+                except Exception as e:
+                    self.root.after(0, lambda: show_rebase_error(str(e)))
+            
+            def show_rebase_success():
+                progress_window.destroy()
+                messagebox.showinfo("Success", 
+                    "Commit message updated successfully!\n\nGit history has been rewritten.")
+                self.refresh_all()
+                if hasattr(self, 'graph_canvas'):
+                    self.draw_commit_graph(self.graph_canvas)
+            
+            def show_rebase_error(error_msg):
+                progress_window.destroy()
+                
+                # Check if we're in a rebase state
+                rebase_dir = os.path.join(self.repo_path, '.git', 'rebase-merge')
+                rebase_apply_dir = os.path.join(self.repo_path, '.git', 'rebase-apply')
+                
+                in_rebase = os.path.exists(rebase_dir) or os.path.exists(rebase_apply_dir)
+                
+                if in_rebase:
+                    self.show_rebase_recovery_dialog(error_msg)
+                else:
+                    messagebox.showerror("Rebase Failed", 
+                        f"Interactive rebase failed:\n\n{error_msg}\n\n" +
+                        "The repository should be in its original state.")
+            
+            # Start rebase in background
+            threading.Thread(target=run_rebase, daemon=True).start()
+            
+        except Exception as e:
+            self.root.after(0, lambda: messagebox.showerror("Error", f"Failed to setup rebase: {str(e)}"))
+
+
+    def show_rebase_recovery_dialog(self, error_msg):
+        """Show dialog to help user recover from failed rebase"""
+        recovery_window = tk.Toplevel(self.root)
+        recovery_window.title("Rebase Recovery")
+        recovery_window.geometry("600x400")
+        recovery_window.transient(self.root)
+        recovery_window.grab_set()
+        
+        # Header
+        header_frame = ttk.Frame(recovery_window)
+        header_frame.pack(fill=tk.X, padx=10, pady=10)
+        
+        ttk.Label(header_frame, text="⚠️ Rebase Needs Attention", 
+                font=('TkDefaultFont', 12, 'bold'), foreground='red').pack()
+        
+        # Error info
+        info_frame = ttk.LabelFrame(recovery_window, text="Error Details")
+        info_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=5)
+        
+        error_text = tk.Text(info_frame, height=8, wrap=tk.WORD, font=('Courier', 9))
+        error_scroll = ttk.Scrollbar(info_frame, orient=tk.VERTICAL, command=error_text.yview)
+        error_text.configure(yscrollcommand=error_scroll.set)
+        
+        error_text.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=5, pady=5)
+        error_scroll.pack(side=tk.RIGHT, fill=tk.Y, pady=5)
+        
+        error_text.insert('1.0', f"Rebase Error:\n{error_msg}\n\n")
+        error_text.insert(tk.END, "The repository is currently in a rebase state.\n")
+        error_text.insert(tk.END, "You need to either continue or abort the rebase.")
+        error_text.config(state=tk.DISABLED)
+        
+        # Instructions
+        inst_frame = ttk.LabelFrame(recovery_window, text="Recovery Options")
+        inst_frame.pack(fill=tk.X, padx=10, pady=5)
+        
+        instructions = """Choose one of the following options:
+
+    1. ABORT REBASE: Cancel the rebase and return to original state (SAFE)
+    2. CONTINUE REBASE: Try to continue if you've resolved conflicts
+    3. MANUAL RECOVERY: Open terminal/command prompt to handle manually
+
+    Recommendation: Choose "Abort Rebase" to safely return to the original state."""
+        
+        ttk.Label(inst_frame, text=instructions, font=('TkDefaultFont', 9)).pack(padx=10, pady=10, anchor=tk.W)
+        
+        # Buttons
+        button_frame = ttk.Frame(recovery_window)
+        button_frame.pack(fill=tk.X, padx=10, pady=10)
+        
+        def abort_rebase():
+            try:
+                result = subprocess.run(['git', 'rebase', '--abort'], 
+                                    cwd=self.repo_path, capture_output=True, text=True)
+                
+                if result.returncode == 0:
+                    recovery_window.destroy()
+                    messagebox.showinfo("Rebase Aborted", 
+                        "Rebase has been aborted. Repository is back to original state.")
+                    self.refresh_all()
+                else:
+                    messagebox.showerror("Abort Failed", f"Failed to abort rebase: {result.stderr}")
+                    
+            except Exception as e:
+                messagebox.showerror("Error", f"Error aborting rebase: {str(e)}")
+        
+        def continue_rebase():
+            try:
+                result = subprocess.run(['git', 'rebase', '--continue'], 
+                                    cwd=self.repo_path, capture_output=True, text=True)
+                
+                if result.returncode == 0:
+                    recovery_window.destroy()
+                    messagebox.showinfo("Rebase Continued", 
+                        "Rebase completed successfully!")
+                    self.refresh_all()
+                else:
+                    messagebox.showerror("Continue Failed", 
+                        f"Failed to continue rebase: {result.stderr}\n\n" +
+                        "You may need to resolve conflicts first.")
+                    
+            except Exception as e:
+                messagebox.showerror("Error", f"Error continuing rebase: {str(e)}")
+        
+        def open_terminal():
+            """Open terminal in repository directory"""
+            try:
+                system = platform.system()
+                if system == "Windows":
+                    subprocess.Popen(['cmd', '/c', 'start', 'cmd', '/k', f'cd /d "{self.repo_path}"'])
+                elif system == "Darwin":  # macOS
+                    subprocess.Popen(['open', '-a', 'Terminal', self.repo_path])
+                else:  # Linux
+                    subprocess.Popen(['gnome-terminal', '--working-directory', self.repo_path])
+                
+                messagebox.showinfo("Terminal Opened", 
+                    f"Terminal opened in {self.repo_path}\n\n" +
+                    "Use these commands:\n" +
+                    "- git rebase --abort (to cancel)\n" +
+                    "- git rebase --continue (to proceed)\n" +
+                    "- git status (to check state)")
+                    
+            except Exception as e:
+                messagebox.showerror("Error", f"Could not open terminal: {str(e)}")
+        
+        # Create buttons
+        ttk.Button(button_frame, text="❌ Abort Rebase (Safe)", command=abort_rebase, 
+                style='Warning.TButton').pack(side=tk.LEFT, padx=5)
+        
+        ttk.Button(button_frame, text="✅ Continue Rebase", command=continue_rebase, 
+                style='Success.TButton').pack(side=tk.LEFT, padx=5)
+        
+        ttk.Button(button_frame, text="🖥️ Open Terminal", command=open_terminal).pack(side=tk.LEFT, padx=15)
+        
+        ttk.Button(button_frame, text="Close", command=recovery_window.destroy).pack(side=tk.RIGHT, padx=5)
+
+
+    def check_rebase_state(self):
+        """Check if repository is in a rebase state"""
+        try:
+            rebase_dir = os.path.join(self.repo_path, '.git', 'rebase-merge')
+            rebase_apply_dir = os.path.join(self.repo_path, '.git', 'rebase-apply')
+            
+            if os.path.exists(rebase_dir) or os.path.exists(rebase_apply_dir):
+                return True, "Repository is in rebase state"
+            
+            return False, "Repository is clean"
+            
+        except Exception as e:
+            return None, f"Error checking rebase state: {str(e)}"
+
+
+    def edit_commit_message_enhanced(self):
+        """Enhanced commit message editing with better pre-checks"""
+        if not self.repo:
+            messagebox.showerror("Error", "No repository loaded")
+            return
+        
+        # Check if already in rebase state
+        in_rebase, rebase_msg = self.check_rebase_state()
+        
+        if in_rebase:
+            if messagebox.askyesno("Rebase In Progress", 
+                                f"{rebase_msg}\n\nDo you want to handle the existing rebase first?"):
+                self.show_rebase_recovery_dialog("Existing rebase detected")
+            return
+        
+        # Check for uncommitted changes
+        try:
+            if self.repo.is_dirty():
+                if not messagebox.askyesno("Uncommitted Changes", 
+                                        "You have uncommitted changes. These should be committed or stashed first.\n\n" +
+                                        "Continue anyway? (Not recommended)"):
+                    return
+        except:
+            pass
+        
+        # Proceed with the enhanced edit dialog
+        self.edit_commit_message()
+
+
+    # Simple fallback method for editing only HEAD
+    def edit_head_commit_simple(self):
+        """Simple and reliable method to edit only HEAD commit"""
+        if not self.repo:
+            messagebox.showerror("Error", "No repository loaded")
+            return
+        
+        try:
+            head_commit = self.repo.head.commit
+            current_message = head_commit.message.strip()
+            
+            # Create simple dialog
+            edit_dialog = tk.Toplevel(self.root)
+            edit_dialog.title("Edit HEAD Commit Message")
+            edit_dialog.geometry("600x300")
+            edit_dialog.transient(self.root)
+            edit_dialog.grab_set()
+            
+            # Header
+            ttk.Label(edit_dialog, text="Edit Last Commit Message", 
+                    font=('TkDefaultFont', 12, 'bold')).pack(pady=10)
+            
+            # Current message
+            ttk.Label(edit_dialog, text="Current message:").pack(anchor=tk.W, padx=20)
+            current_text = tk.Text(edit_dialog, height=3, wrap=tk.WORD, state=tk.DISABLED, bg='#f0f0f0')
+            current_text.pack(fill=tk.X, padx=20, pady=5)
+            current_text.config(state=tk.NORMAL)
+            current_text.insert('1.0', current_message)
+            current_text.config(state=tk.DISABLED)
+            
+            # New message
+            ttk.Label(edit_dialog, text="New message:").pack(anchor=tk.W, padx=20)
+            new_text = tk.Text(edit_dialog, height=3, wrap=tk.WORD)
+            new_text.pack(fill=tk.X, padx=20, pady=5)
+            new_text.insert('1.0', current_message)
+            new_text.focus_set()
+            
+            # Buttons
+            button_frame = ttk.Frame(edit_dialog)
+            button_frame.pack(fill=tk.X, padx=20, pady=20)
+            
+            def save_message():
+                new_message = new_text.get('1.0', tk.END).strip()
+                if new_message and new_message != current_message:
+                    try:
+                        self.repo.git.commit('--amend', '-m', new_message)
+                        edit_dialog.destroy()
+                        messagebox.showinfo("Success", "HEAD commit message updated!")
+                        self.refresh_all()
+                    except Exception as e:
+                        messagebox.showerror("Error", f"Failed to update message: {str(e)}")
+                else:
+                    edit_dialog.destroy()
+            
+            ttk.Button(button_frame, text="Save", command=save_message, 
+                    style='Success.TButton').pack(side=tk.LEFT, padx=5)
+            ttk.Button(button_frame, text="Cancel", command=edit_dialog.destroy).pack(side=tk.RIGHT, padx=5)
+            
+        except Exception as e:
+            messagebox.showerror("Error", f"Failed to edit HEAD commit: {str(e)}")
+
+
+
+
+
+##
+
+
+
 
 
 def main():
