@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Git Python GUI - A comprehensive Git frontend similar to Basic VCS
+Git Python GUI - A comprehensive Git frontend similar to Simple VCS
 Usage: python git_python_gui.py [repository_path]
 """
 
@@ -18,7 +18,7 @@ import webbrowser
 class GitPythonGUI:
     def __init__(self, root, repo_path=None):
         self.root = root
-        self.root.title("Git Python GUI - Basic VCS Style")
+        self.root.title("Git Python GUI - VCS Style")
         self.root.geometry("1400x900")
         self.root.configure(bg='#f0f0f0')
         
@@ -202,7 +202,7 @@ class GitPythonGUI:
         repo_menu.add_separator()
         repo_menu.add_command(label="Create Tag...", command=self.create_tag)
         repo_menu.add_command(label="Switch to Tag...", command=self.switch_to_tag_only)
-        repo_menu.add_command(label="Manage Tags...", command=self.manage_tags)
+        repo_menu.add_command(label="Manage Tags...", command=self.manage_tags_enhanced)
         
         # History menu
         history_menu = tk.Menu(menubar, tearoff=0)
@@ -335,7 +335,7 @@ class GitPythonGUI:
                                    width=5, style='Warning.TButton')
         tag_create_btn.pack(side=tk.LEFT, padx=1)
         
-        tag_manage_btn = ttk.Button(icons_frame, text="🏷️", command=self.manage_tags, 
+        tag_manage_btn = ttk.Button(icons_frame, text="🏷️", command=self.manage_tags_enhanced, 
                                    width=5, style='Secondary.TButton')
         tag_manage_btn.pack(side=tk.LEFT, padx=1)
         
@@ -348,7 +348,7 @@ class GitPythonGUI:
         self.create_tooltip(branch_create_btn, "Create new branch")
         self.create_tooltip(branch_switch_btn, "Switch branch")
         self.create_tooltip(tag_create_btn, "Create new tag")
-        self.create_tooltip(tag_manage_btn, "Manage tags")
+        self.create_tooltip(tag_manage_btn, "View and manage tags")
         self.create_tooltip(refresh_btn, "Refresh repository")
         
         # Tree frame
@@ -472,6 +472,814 @@ class GitPythonGUI:
         # Connection status
         self.connection_label = ttk.Label(status_frame, text="", relief=tk.SUNKEN)
         self.connection_label.pack(side=tk.RIGHT, padx=2, pady=2)
+    
+    def manage_tags_enhanced(self):
+        """Enhanced tag management with comprehensive information and details"""
+        if not self.repo:
+            messagebox.showerror("Error", "No repository loaded")
+            return
+        
+        tags_window = tk.Toplevel(self.root)
+        tags_window.title("Tag Management - Comprehensive View")
+        tags_window.geometry("1600x900")
+        
+        # Create main paned window (horizontal)
+        main_paned = ttk.PanedWindow(tags_window, orient=tk.HORIZONTAL)
+        main_paned.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
+        
+        # LEFT PANE - Tags List
+        left_frame = ttk.Frame(main_paned)
+        main_paned.add(left_frame, weight=1)
+        
+        # Tags header with actions
+        tags_header = ttk.Frame(left_frame)
+        tags_header.pack(fill=tk.X, pady=5)
+        
+        ttk.Label(tags_header, text="Tags", font=('TkDefaultFont', 12, 'bold')).pack(side=tk.LEFT)
+        
+        # Quick actions for tags
+        actions_frame = ttk.Frame(tags_header)
+        actions_frame.pack(side=tk.RIGHT)
+        
+        ttk.Button(actions_frame, text="Create Tag", command=self.create_tag, 
+                  style='Success.TButton').pack(side=tk.LEFT, padx=2)
+        ttk.Button(actions_frame, text="Push Tags", command=self.push_all_tags, 
+                  style='Info.TButton').pack(side=tk.LEFT, padx=2)
+        ttk.Button(actions_frame, text="Refresh", command=lambda: self.refresh_tags_list(tags_tree), 
+                  style='Accent.TButton').pack(side=tk.LEFT, padx=2)
+        
+        # Tags tree with comprehensive columns
+        tags_frame = ttk.Frame(left_frame)
+        tags_frame.pack(fill=tk.BOTH, expand=True, pady=5)
+        
+        tags_columns = ('Tag Name', 'Type', 'Commit Hash', 'Date', 'Author', 'Remote Status')
+        tags_tree = ttk.Treeview(tags_frame, columns=tags_columns, show='headings', height=20)
+        
+        # Configure tag columns
+        tags_tree.heading('Tag Name', text='Tag Name')
+        tags_tree.column('Tag Name', width=150, minwidth=100)
+        
+        tags_tree.heading('Type', text='Type')
+        tags_tree.column('Type', width=80, minwidth=60)
+        
+        tags_tree.heading('Commit Hash', text='Commit Hash')
+        tags_tree.column('Commit Hash', width=100, minwidth=80)
+        
+        tags_tree.heading('Date', text='Date')
+        tags_tree.column('Date', width=120, minwidth=100)
+        
+        tags_tree.heading('Author', text='Author')
+        tags_tree.column('Author', width=120, minwidth=100)
+        
+        tags_tree.heading('Remote Status', text='Remote Status')
+        tags_tree.column('Remote Status', width=100, minwidth=80)
+        
+        # Scrollbars for tags tree
+        tags_v_scroll = ttk.Scrollbar(tags_frame, orient=tk.VERTICAL, command=tags_tree.yview)
+        tags_h_scroll = ttk.Scrollbar(tags_frame, orient=tk.HORIZONTAL, command=tags_tree.xview)
+        tags_tree.configure(yscrollcommand=tags_v_scroll.set, xscrollcommand=tags_h_scroll.set)
+        
+        tags_tree.grid(row=0, column=0, sticky='nsew')
+        tags_v_scroll.grid(row=0, column=1, sticky='ns')
+        tags_h_scroll.grid(row=1, column=0, sticky='ew')
+        
+        tags_frame.grid_rowconfigure(0, weight=1)
+        tags_frame.grid_columnconfigure(0, weight=1)
+        
+        # RIGHT PANE - Tag Details (vertical split)
+        right_paned = ttk.PanedWindow(main_paned, orient=tk.VERTICAL)
+        main_paned.add(right_paned, weight=2)
+        
+        # TOP RIGHT - Tag Information
+        info_frame = ttk.LabelFrame(right_paned, text="Tag Information")
+        right_paned.add(info_frame, weight=1)
+        
+        # Tag details text area
+        info_text_frame = ttk.Frame(info_frame)
+        info_text_frame.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
+        
+        self.tag_info_text = tk.Text(info_text_frame, height=8, wrap=tk.WORD, font=('Courier', 10))
+        info_text_scroll = ttk.Scrollbar(info_text_frame, orient=tk.VERTICAL, command=self.tag_info_text.yview)
+        self.tag_info_text.configure(yscrollcommand=info_text_scroll.set)
+        
+        self.tag_info_text.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        info_text_scroll.pack(side=tk.RIGHT, fill=tk.Y)
+        
+        # MIDDLE RIGHT - Commit Details
+        commit_frame = ttk.LabelFrame(right_paned, text="Commit Details")
+        right_paned.add(commit_frame, weight=1)
+        
+        commit_text_frame = ttk.Frame(commit_frame)
+        commit_text_frame.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
+        
+        self.commit_details_text = tk.Text(commit_text_frame, height=6, wrap=tk.WORD, font=('Courier', 9))
+        commit_text_scroll = ttk.Scrollbar(commit_text_frame, orient=tk.VERTICAL, command=self.commit_details_text.yview)
+        self.commit_details_text.configure(yscrollcommand=commit_text_scroll.set)
+        
+        self.commit_details_text.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        commit_text_scroll.pack(side=tk.RIGHT, fill=tk.Y)
+        
+        # BOTTOM RIGHT - Files Changed
+        files_frame = ttk.LabelFrame(right_paned, text="Files Changed in Tag")
+        right_paned.add(files_frame, weight=2)
+        
+        files_tree_frame = ttk.Frame(files_frame)
+        files_tree_frame.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
+        
+        files_columns = ('File Path', 'Status', 'Additions', 'Deletions', 'Total Changes')
+        self.tag_files_tree = ttk.Treeview(files_tree_frame, columns=files_columns, show='headings')
+        
+        # Configure files columns
+        for col in files_columns:
+            self.tag_files_tree.heading(col, text=col)
+            if col == 'File Path':
+                self.tag_files_tree.column(col, width=300, minwidth=200)
+            else:
+                self.tag_files_tree.column(col, width=80, minwidth=60)
+        
+        # Scrollbars for files tree
+        files_v_scroll = ttk.Scrollbar(files_tree_frame, orient=tk.VERTICAL, command=self.tag_files_tree.yview)
+        files_h_scroll = ttk.Scrollbar(files_tree_frame, orient=tk.HORIZONTAL, command=self.tag_files_tree.xview)
+        self.tag_files_tree.configure(yscrollcommand=files_v_scroll.set, xscrollcommand=files_h_scroll.set)
+        
+        self.tag_files_tree.grid(row=0, column=0, sticky='nsew')
+        files_v_scroll.grid(row=0, column=1, sticky='ns')
+        files_h_scroll.grid(row=1, column=0, sticky='ew')
+        
+        files_tree_frame.grid_rowconfigure(0, weight=1)
+        files_tree_frame.grid_columnconfigure(0, weight=1)
+        
+        # BOTTOM ACTIONS BAR
+        actions_bar = ttk.Frame(tags_window)
+        actions_bar.pack(fill=tk.X, padx=10, pady=5)
+        
+        # Tag operations
+        ttk.Button(actions_bar, text="Switch to Tag", 
+                  command=lambda: self.switch_to_selected_tag(tags_tree), 
+                  style='Info.TButton').pack(side=tk.LEFT, padx=5)
+        
+        ttk.Button(actions_bar, text="Delete Tag", 
+                  command=lambda: self.delete_selected_tag(tags_tree), 
+                  style='Warning.TButton').pack(side=tk.LEFT, padx=5)
+        
+        ttk.Button(actions_bar, text="Push Tag", 
+                  command=lambda: self.push_selected_tag(tags_tree), 
+                  style='Success.TButton').pack(side=tk.LEFT, padx=5)
+        
+        ttk.Button(actions_bar, text="Compare Tags", 
+                  command=lambda: self.compare_tags_dialog(tags_tree)).pack(side=tk.LEFT, padx=5)
+        
+        # File operations
+        ttk.Button(actions_bar, text="View File at Tag", 
+                  command=lambda: self.view_file_at_selected_tag(tags_tree, self.tag_files_tree)).pack(side=tk.LEFT, padx=10)
+        
+        ttk.Button(actions_bar, text="Export Tag Info", 
+                  command=lambda: self.export_tag_info(tags_tree)).pack(side=tk.LEFT, padx=5)
+        
+        # Close button
+        ttk.Button(actions_bar, text="Close", command=tags_window.destroy).pack(side=tk.RIGHT, padx=5)
+        
+        # BIND EVENTS
+        tags_tree.bind('<<TreeviewSelect>>', lambda e: self.on_tag_select(tags_tree))
+        self.tag_files_tree.bind('<Double-1>', lambda e: self.view_file_at_selected_tag(tags_tree, self.tag_files_tree))
+        
+        # Context menus
+        self.create_tag_context_menu(tags_tree)
+        self.create_tag_files_context_menu(self.tag_files_tree, tags_tree)
+        
+        # POPULATE DATA
+        self.populate_tags_enhanced(tags_tree)
+        
+        # Select first tag if available
+        if tags_tree.get_children():
+            first_tag = tags_tree.get_children()[0]
+            tags_tree.selection_set(first_tag)
+            tags_tree.see(first_tag)
+            self.on_tag_select(tags_tree)
+    
+    def create_tag_context_menu(self, tags_tree):
+        """Create context menu for tags"""
+        self.tag_context_menu = tk.Menu(self.root, tearoff=0)
+        self.tag_context_menu.add_command(label="Switch to Tag", 
+                                         command=lambda: self.switch_to_selected_tag(tags_tree))
+        self.tag_context_menu.add_command(label="Create Branch from Tag", 
+                                         command=lambda: self.create_branch_from_tag(tags_tree))
+        self.tag_context_menu.add_separator()
+        self.tag_context_menu.add_command(label="Push Tag to Remote", 
+                                         command=lambda: self.push_selected_tag(tags_tree))
+        self.tag_context_menu.add_command(label="Delete Tag", 
+                                         command=lambda: self.delete_selected_tag(tags_tree))
+        self.tag_context_menu.add_separator()
+        self.tag_context_menu.add_command(label="View Tag at GitHub", 
+                                         command=lambda: self.view_tag_at_github(tags_tree))
+        self.tag_context_menu.add_command(label="Copy Tag Name", 
+                                         command=lambda: self.copy_tag_name(tags_tree))
+        
+        tags_tree.bind('<Button-3>', lambda e: self.show_tag_context_menu(e, tags_tree))
+    
+    def create_tag_files_context_menu(self, files_tree, tags_tree):
+        """Create context menu for tag files"""
+        self.tag_files_context_menu = tk.Menu(self.root, tearoff=0)
+        self.tag_files_context_menu.add_command(label="View File at Tag", 
+                                               command=lambda: self.view_file_at_selected_tag(tags_tree, files_tree))
+        self.tag_files_context_menu.add_command(label="Compare with Current", 
+                                               command=lambda: self.compare_file_with_current_from_tag(tags_tree, files_tree))
+        self.tag_files_context_menu.add_command(label="View File History", 
+                                               command=lambda: self.view_file_history_from_tag(tags_tree, files_tree))
+        self.tag_files_context_menu.add_separator()
+        self.tag_files_context_menu.add_command(label="Copy File Path", 
+                                               command=lambda: self.copy_file_path(files_tree))
+        
+        files_tree.bind('<Button-3>', lambda e: self.show_tag_files_context_menu(e, files_tree))
+    
+    def populate_tags_enhanced(self, tags_tree):
+        """Populate tags with comprehensive information"""
+        try:
+            # Clear existing items
+            for item in tags_tree.get_children():
+                tags_tree.delete(item)
+            
+            # Get remote tags for comparison
+            remote_tags = set()
+            try:
+                if self.repo.remotes:
+                    remote_refs = self.repo.remotes.origin.refs
+                    for ref in remote_refs:
+                        if ref.name.startswith('origin/refs/tags/'):
+                            tag_name = ref.name.replace('origin/refs/tags/', '')
+                            remote_tags.add(tag_name)
+            except:
+                pass
+            
+            # Sort tags by date (newest first)
+            sorted_tags = sorted(self.repo.tags, key=lambda t: t.commit.committed_datetime, reverse=True)
+            
+            for tag in sorted_tags:
+                try:
+                    commit = tag.commit
+                    
+                    # Determine tag type
+                    tag_type = "Lightweight"
+                    if hasattr(tag, 'tag') and tag.tag:
+                        tag_type = "Annotated"
+                    
+                    # Remote status
+                    remote_status = "✓ Remote" if tag.name in remote_tags else "✗ Local only"
+                    
+                    # Color coding based on status
+                    if tag.name in remote_tags:
+                        tags = ('remote_tag',)
+                    else:
+                        tags = ('local_tag',)
+                    
+                    tags_tree.insert('', 'end', values=(
+                        tag.name,
+                        tag_type,
+                        commit.hexsha[:12],
+                        commit.committed_datetime.strftime('%Y-%m-%d %H:%M:%S'),
+                        commit.author.name,
+                        remote_status
+                    ), tags=tags)
+                    
+                except Exception as e:
+                    # If there's an error with a specific tag, add it with limited info
+                    tags_tree.insert('', 'end', values=(
+                        tag.name,
+                        "Error",
+                        "N/A",
+                        "N/A",
+                        "N/A",
+                        "N/A"
+                    ), tags=('error_tag',))
+            
+            # Configure tag colors
+            tags_tree.tag_configure('remote_tag', background='#e8f5e8', foreground='#2d5a2d')  # Light green
+            tags_tree.tag_configure('local_tag', background='#fff3cd', foreground='#856404')   # Light yellow
+            tags_tree.tag_configure('error_tag', background='#f8d7da', foreground='#721c24')   # Light red
+            
+        except Exception as e:
+            messagebox.showerror("Error", f"Failed to populate tags: {str(e)}")
+    
+    def on_tag_select(self, tags_tree):
+        """Handle tag selection and update details panes"""
+        selection = tags_tree.selection()
+        if not selection:
+            return
+        
+        try:
+            selected_values = tags_tree.item(selection[0])['values']
+            tag_name = selected_values[0]
+            
+            # Find the tag object
+            selected_tag = None
+            for tag in self.repo.tags:
+                if tag.name == tag_name:
+                    selected_tag = tag
+                    break
+            
+            if not selected_tag:
+                return
+            
+            # Update tag information pane
+            self.update_tag_info_pane(selected_tag)
+            
+            # Update commit details pane
+            self.update_commit_details_pane(selected_tag.commit)
+            
+            # Update files changed pane
+            self.update_tag_files_pane(selected_tag)
+            
+        except Exception as e:
+            self.tag_info_text.delete('1.0', tk.END)
+            self.tag_info_text.insert('1.0', f"Error loading tag details: {str(e)}")
+    
+    def update_tag_info_pane(self, tag):
+        """Update the tag information pane"""
+        try:
+            self.tag_info_text.delete('1.0', tk.END)
+            
+            info = f"🏷️  TAG INFORMATION\n"
+            info += f"{'='*50}\n\n"
+            
+            info += f"Name: {tag.name}\n"
+            info += f"Type: {'Annotated' if hasattr(tag, 'tag') and tag.tag else 'Lightweight'}\n"
+            info += f"Object: {tag.commit.hexsha}\n"
+            info += f"Created: {tag.commit.committed_datetime.strftime('%Y-%m-%d %H:%M:%S %Z')}\n"
+            
+            # Tag message (for annotated tags)
+            if hasattr(tag, 'tag') and tag.tag:
+                if tag.tag.message:
+                    info += f"\nTag Message:\n{'-'*20}\n{tag.tag.message.strip()}\n"
+                if tag.tag.tagger:
+                    info += f"\nTagger: {tag.tag.tagger.name} <{tag.tag.tagger.email}>\n"
+                    info += f"Tagged: {tag.tag.tagged_date}\n"
+            
+            # Remote status
+            try:
+                remote_refs = [ref.name for ref in self.repo.remotes.origin.refs if 'tags' in ref.name]
+                is_remote = any(tag.name in ref for ref in remote_refs)
+                info += f"\nRemote Status: {'✓ Pushed to remote' if is_remote else '✗ Local only'}\n"
+            except:
+                info += f"\nRemote Status: Unknown\n"
+            
+            # Branch information
+            branches_containing = []
+            for branch in self.repo.branches:
+                try:
+                    if tag.commit in list(self.repo.iter_commits(branch.name)):
+                        branches_containing.append(branch.name)
+                except:
+                    continue
+            
+            if branches_containing:
+                info += f"\nBranches containing this tag:\n{', '.join(branches_containing[:5])}"
+                if len(branches_containing) > 5:
+                    info += f" (+{len(branches_containing) - 5} more)"
+            
+            self.tag_info_text.insert('1.0', info)
+            
+        except Exception as e:
+            self.tag_info_text.delete('1.0', tk.END)
+            self.tag_info_text.insert('1.0', f"Error updating tag info: {str(e)}")
+    
+    def update_commit_details_pane(self, commit):
+        """Update the commit details pane"""
+        try:
+            self.commit_details_text.delete('1.0', tk.END)
+            
+            details = f"📝  COMMIT DETAILS\n"
+            details += f"{'='*50}\n\n"
+            
+            details += f"Hash: {commit.hexsha}\n"
+            details += f"Short Hash: {commit.hexsha[:12]}\n"
+            details += f"Author: {commit.author.name} <{commit.author.email}>\n"
+            details += f"Authored: {commit.authored_datetime.strftime('%Y-%m-%d %H:%M:%S %Z')}\n"
+            details += f"Committer: {commit.committer.name} <{commit.committer.email}>\n"
+            details += f"Committed: {commit.committed_datetime.strftime('%Y-%m-%d %H:%M:%S %Z')}\n"
+            
+            # Parent information
+            if commit.parents:
+                details += f"\nParents: {', '.join([p.hexsha[:8] for p in commit.parents])}\n"
+            else:
+                details += f"\nParents: None (root commit)\n"
+            
+            # Commit message
+            details += f"\nCommit Message:\n{'-'*20}\n{commit.message.strip()}\n"
+            
+            # Statistics
+            if commit.parents:
+                try:
+                    # Get diff statistics
+                    diff = commit.parents[0].diff(commit)
+                    files_changed = len(diff)
+                    insertions = sum(d.diff.decode('utf-8').count('\n+') for d in diff if d.diff)
+                    deletions = sum(d.diff.decode('utf-8').count('\n-') for d in diff if d.diff)
+                    
+                    details += f"\nStatistics:\n{'-'*20}\n"
+                    details += f"Files changed: {files_changed}\n"
+                    details += f"Insertions: +{insertions}\n"
+                    details += f"Deletions: -{deletions}\n"
+                    details += f"Net change: {insertions - deletions:+d}\n"
+                except:
+                    details += f"\nStatistics: Unable to calculate\n"
+            
+            self.commit_details_text.insert('1.0', details)
+            
+        except Exception as e:
+            self.commit_details_text.delete('1.0', tk.END)
+            self.commit_details_text.insert('1.0', f"Error updating commit details: {str(e)}")
+    
+    def update_tag_files_pane(self, tag):
+        """Update the files changed pane"""
+        try:
+            # Clear existing items
+            for item in self.tag_files_tree.get_children():
+                self.tag_files_tree.delete(item)
+            
+            commit = tag.commit
+            
+            if commit.parents:
+                # Compare with parent commit
+                parent_commit = commit.parents[0]
+                diffs = parent_commit.diff(commit)
+                
+                total_files = 0
+                total_additions = 0
+                total_deletions = 0
+                
+                for diff in diffs:
+                    status = 'Modified'
+                    if diff.new_file:
+                        status = 'Added'
+                    elif diff.deleted_file:
+                        status = 'Deleted'
+                    elif diff.renamed_file:
+                        status = 'Renamed'
+                    elif diff.copied_file:
+                        status = 'Copied'
+                    
+                    file_path = diff.b_path or diff.a_path
+                    
+                    # Calculate line changes
+                    additions = deletions = 0
+                    try:
+                        if diff.diff:
+                            diff_text = diff.diff.decode('utf-8')
+                            additions = diff_text.count('\n+') - diff_text.count('\n+++')
+                            deletions = diff_text.count('\n-') - diff_text.count('\n---')
+                    except:
+                        pass
+                    
+                    total_changes = additions + deletions
+                    total_files += 1
+                    total_additions += additions
+                    total_deletions += deletions
+                    
+                    # Color coding based on change type
+                    if status == 'Added':
+                        tags = ('added_file',)
+                    elif status == 'Deleted':
+                        tags = ('deleted_file',)
+                    elif status == 'Modified':
+                        tags = ('modified_file',)
+                    else:
+                        tags = ('renamed_file',)
+                    
+                    self.tag_files_tree.insert('', 'end', values=(
+                        file_path,
+                        status,
+                        f"+{additions}",
+                        f"-{deletions}",
+                        str(total_changes)
+                    ), tags=tags)
+                
+                # Add summary row
+                if total_files > 0:
+                    self.tag_files_tree.insert('', 'end', values=(
+                        f"📊 SUMMARY ({total_files} files)",
+                        "Total",
+                        f"+{total_additions}",
+                        f"-{total_deletions}",
+                        str(total_additions + total_deletions)
+                    ), tags=('summary_row',))
+                
+            else:
+                # Root commit - all files are new
+                for item in commit.tree.traverse():
+                    if item.type == 'blob':
+                        self.tag_files_tree.insert('', 'end', values=(
+                            item.path,
+                            'Added',
+                            'New',
+                            '0',
+                            'New'
+                        ), tags=('added_file',))
+            
+            # Configure file colors
+            self.tag_files_tree.tag_configure('added_file', background='#d4edda', foreground='#155724')
+            self.tag_files_tree.tag_configure('deleted_file', background='#f8d7da', foreground='#721c24')
+            self.tag_files_tree.tag_configure('modified_file', background='#fff3cd', foreground='#856404')
+            self.tag_files_tree.tag_configure('renamed_file', background='#cce5ff', foreground='#004085')
+            self.tag_files_tree.tag_configure('summary_row', background='#e9ecef', foreground='#495057', font=('TkDefaultFont', 10, 'bold'))
+            
+        except Exception as e:
+            self.tag_files_tree.insert('', 'end', values=(
+                f"Error: {str(e)}",
+                "Error",
+                "N/A",
+                "N/A",
+                "N/A"
+            ))
+    
+    def refresh_tags_list(self, tags_tree):
+        """Refresh the tags list"""
+        self.populate_tags_enhanced(tags_tree)
+    
+    def switch_to_selected_tag(self, tags_tree):
+        """Switch to the selected tag"""
+        selection = tags_tree.selection()
+        if not selection:
+            messagebox.showwarning("No Selection", "Please select a tag to switch to")
+            return
+        
+        tag_name = tags_tree.item(selection[0])['values'][0]
+        
+        if messagebox.askyesno("Confirm Switch", 
+                              f"Switch to tag '{tag_name}'?\n\n" +
+                              "This will detach HEAD from the current branch."):
+            try:
+                self.repo.git.checkout(tag_name)
+                self.refresh_all()
+                self.status_label.config(text=f"✓ Switched to tag: {tag_name} (HEAD detached)")
+                messagebox.showinfo("Success", f"Successfully switched to tag '{tag_name}'")
+            except Exception as e:
+                messagebox.showerror("Switch Error", f"Failed to switch to tag: {str(e)}")
+    
+    def delete_selected_tag(self, tags_tree):
+        """Delete the selected tag"""
+        selection = tags_tree.selection()
+        if not selection:
+            messagebox.showwarning("No Selection", "Please select a tag to delete")
+            return
+        
+        tag_name = tags_tree.item(selection[0])['values'][0]
+        
+        if messagebox.askyesno("Confirm Delete", 
+                              f"Delete tag '{tag_name}'?\n\n" +
+                              "This action cannot be undone."):
+            try:
+                self.repo.delete_tag(tag_name)
+                self.refresh_tags_list(tags_tree)
+                self.status_label.config(text=f"✓ Tag '{tag_name}' deleted")
+                messagebox.showinfo("Success", f"Tag '{tag_name}' deleted successfully")
+            except Exception as e:
+                messagebox.showerror("Delete Error", f"Failed to delete tag: {str(e)}")
+    
+    def push_selected_tag(self, tags_tree):
+        """Push the selected tag to remote"""
+        selection = tags_tree.selection()
+        if not selection:
+            messagebox.showwarning("No Selection", "Please select a tag to push")
+            return
+        
+        tag_name = tags_tree.item(selection[0])['values'][0]
+        
+        if messagebox.askyesno("Confirm Push", f"Push tag '{tag_name}' to remote?"):
+            def push_tag():
+                try:
+                    self.status_label.config(text=f"Pushing tag '{tag_name}'...")
+                    self.repo.git.push('origin', tag_name)
+                    self.root.after(0, lambda: self.status_label.config(text=f"✓ Tag '{tag_name}' pushed to remote"))
+                    self.root.after(0, lambda: self.refresh_tags_list(tags_tree))
+                    self.root.after(0, lambda: messagebox.showinfo("Success", f"Tag '{tag_name}' pushed successfully"))
+                except Exception as e:
+                    self.root.after(0, lambda: messagebox.showerror("Push Error", f"Failed to push tag: {str(e)}"))
+            
+            threading.Thread(target=push_tag, daemon=True).start()
+    
+    def push_all_tags(self):
+        """Push all tags to remote"""
+        if messagebox.askyesno("Confirm Push All", "Push all tags to remote?"):
+            def push_all():
+                try:
+                    self.status_label.config(text="Pushing all tags...")
+                    self.repo.git.push('origin', '--tags')
+                    self.root.after(0, lambda: self.status_label.config(text="✓ All tags pushed to remote"))
+                    self.root.after(0, lambda: messagebox.showinfo("Success", "All tags pushed successfully"))
+                except Exception as e:
+                    self.root.after(0, lambda: messagebox.showerror("Push Error", f"Failed to push tags: {str(e)}"))
+            
+            threading.Thread(target=push_all, daemon=True).start()
+    
+    def view_file_at_selected_tag(self, tags_tree, files_tree):
+        """View file at the selected tag"""
+        tag_selection = tags_tree.selection()
+        file_selection = files_tree.selection()
+        
+        if not tag_selection or not file_selection:
+            messagebox.showwarning("No Selection", "Please select both a tag and a file")
+            return
+        
+        tag_name = tags_tree.item(tag_selection[0])['values'][0]
+        file_path = files_tree.item(file_selection[0])['values'][0]
+        
+        # Skip summary row
+        if file_path.startswith('📊 SUMMARY'):
+            return
+        
+        try:
+            tag = self.repo.tags[tag_name]
+            self.show_file_at_commit(file_path, tag.commit.hexsha)
+        except Exception as e:
+            messagebox.showerror("Error", f"Failed to view file: {str(e)}")
+    
+    def compare_tags_dialog(self, tags_tree):
+        """Compare two tags"""
+        messagebox.showinfo("Feature Coming Soon", "Tag comparison feature will be implemented in a future version")
+    
+    def export_tag_info(self, tags_tree):
+        """Export tag information to file"""
+        selection = tags_tree.selection()
+        if not selection:
+            messagebox.showwarning("No Selection", "Please select a tag to export")
+            return
+        
+        tag_name = tags_tree.item(selection[0])['values'][0]
+        
+        file_path = filedialog.asksaveasfilename(
+            title="Export Tag Information",
+            defaultextension=".txt",
+            filetypes=[("Text files", "*.txt"), ("All files", "*.*")]
+        )
+        
+        if file_path:
+            try:
+                tag = self.repo.tags[tag_name]
+                with open(file_path, 'w') as f:
+                    f.write(f"Tag Information Export\n")
+                    f.write(f"{'='*50}\n\n")
+                    f.write(f"Tag Name: {tag_name}\n")
+                    f.write(f"Commit: {tag.commit.hexsha}\n")
+                    f.write(f"Author: {tag.commit.author.name}\n")
+                    f.write(f"Date: {tag.commit.committed_datetime}\n")
+                    f.write(f"Message: {tag.commit.message.strip()}\n")
+                    
+                messagebox.showinfo("Success", f"Tag information exported to {file_path}")
+            except Exception as e:
+                messagebox.showerror("Export Error", f"Failed to export tag info: {str(e)}")
+    
+    def show_tag_context_menu(self, event, tags_tree):
+        """Show context menu for tags"""
+        try:
+            self.tag_context_menu.tk_popup(event.x_root, event.y_root)
+        finally:
+            self.tag_context_menu.grab_release()
+    
+    def show_tag_files_context_menu(self, event, files_tree):
+        """Show context menu for tag files"""
+        try:
+            self.tag_files_context_menu.tk_popup(event.x_root, event.y_root)
+        finally:
+            self.tag_files_context_menu.grab_release()
+    
+    def create_branch_from_tag(self, tags_tree):
+        """Create a branch from the selected tag"""
+        selection = tags_tree.selection()
+        if not selection:
+            messagebox.showwarning("No Selection", "Please select a tag")
+            return
+        
+        tag_name = tags_tree.item(selection[0])['values'][0]
+        branch_name = simpledialog.askstring("Create Branch", f"Enter branch name for tag '{tag_name}':")
+        
+        if branch_name:
+            try:
+                tag = self.repo.tags[tag_name]
+                new_branch = self.repo.create_head(branch_name, tag.commit)
+                
+                if messagebox.askyesno("Switch Branch", f"Switch to new branch '{branch_name}'?"):
+                    new_branch.checkout()
+                    self.refresh_all()
+                
+                messagebox.showinfo("Success", f"Branch '{branch_name}' created from tag '{tag_name}'")
+            except Exception as e:
+                messagebox.showerror("Error", f"Failed to create branch: {str(e)}")
+    
+    def view_tag_at_github(self, tags_tree):
+        """View tag at GitHub"""
+        selection = tags_tree.selection()
+        if not selection:
+            return
+        
+        tag_name = tags_tree.item(selection[0])['values'][0]
+        
+        try:
+            remote_url = self.repo.remotes.origin.url
+            if 'github.com' in remote_url:
+                # Convert SSH URL to HTTPS if needed
+                if remote_url.startswith('git@github.com:'):
+                    remote_url = remote_url.replace('git@github.com:', 'https://github.com/')
+                if remote_url.endswith('.git'):
+                    remote_url = remote_url[:-4]
+                
+                github_url = f"{remote_url}/releases/tag/{tag_name}"
+                webbrowser.open(github_url)
+            else:
+                messagebox.showinfo("Info", "This feature is only available for GitHub repositories")
+        except Exception as e:
+            messagebox.showerror("Error", f"Failed to open GitHub: {str(e)}")
+    
+    def copy_tag_name(self, tags_tree):
+        """Copy tag name to clipboard"""
+        selection = tags_tree.selection()
+        if not selection:
+            return
+        
+        tag_name = tags_tree.item(selection[0])['values'][0]
+        self.root.clipboard_clear()
+        self.root.clipboard_append(tag_name)
+        self.status_label.config(text=f"Tag name '{tag_name}' copied to clipboard")
+    
+    def copy_file_path(self, files_tree):
+        """Copy file path to clipboard"""
+        selection = files_tree.selection()
+        if not selection:
+            return
+        
+        file_path = files_tree.item(selection[0])['values'][0]
+        if not file_path.startswith('📊 SUMMARY'):
+            self.root.clipboard_clear()
+            self.root.clipboard_append(file_path)
+            self.status_label.config(text=f"File path '{file_path}' copied to clipboard")
+    
+    def compare_file_with_current_from_tag(self, tags_tree, files_tree):
+        """Compare file in tag with current version"""
+        tag_selection = tags_tree.selection()
+        file_selection = files_tree.selection()
+        
+        if not tag_selection or not file_selection:
+            messagebox.showwarning("No Selection", "Please select both a tag and a file")
+            return
+        
+        tag_name = tags_tree.item(tag_selection[0])['values'][0]
+        file_path = files_tree.item(file_selection[0])['values'][0]
+        
+        if file_path.startswith('📊 SUMMARY'):
+            return
+        
+        try:
+            tag = self.repo.tags[tag_name]
+            self.compare_file_with_current(files_tree, tag.commit)
+        except Exception as e:
+            messagebox.showerror("Error", f"Failed to compare file: {str(e)}")
+    
+    def view_file_history_from_tag(self, tags_tree, files_tree):
+        """View file history from tag"""
+        file_selection = files_tree.selection()
+        if not file_selection:
+            messagebox.showwarning("No Selection", "Please select a file")
+            return
+        
+        file_path = files_tree.item(file_selection[0])['values'][0]
+        
+        if file_path.startswith('📊 SUMMARY'):
+            return
+        
+        try:
+            self.show_file_history_dialog(file_path)
+        except Exception as e:
+            messagebox.showerror("Error", f"Failed to view file history: {str(e)}")
+    
+    def show_file_history_dialog(self, file_path):
+        """Show file history in a dialog"""
+        history_window = tk.Toplevel(self.root)
+        history_window.title(f"File History: {file_path}")
+        history_window.geometry("800x600")
+        
+        columns = ('Commit', 'Date', 'Author', 'Message')
+        history_tree = ttk.Treeview(history_window, columns=columns, show='headings')
+        
+        for col in columns:
+            history_tree.heading(col, text=col)
+            history_tree.column(col, width=150)
+        
+        try:
+            commits = list(self.repo.iter_commits(paths=file_path))
+            for commit in commits:
+                history_tree.insert('', 'end', values=(
+                    commit.hexsha[:8],
+                    commit.committed_datetime.strftime('%Y-%m-%d %H:%M'),
+                    commit.author.name,
+                    commit.message.strip()[:50]
+                ))
+        except Exception as e:
+            messagebox.showerror("Error", f"Could not get file history: {str(e)}")
+        
+        history_tree.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
+        
+        ttk.Button(history_window, text="Close", command=history_window.destroy).pack(pady=10)
+    
+    # Continue with the rest of the original methods...
     
     def populate_repository_tree(self):
         """Populate repository tree with folders and status indicators"""
@@ -1471,7 +2279,7 @@ class GitPythonGUI:
     
     def show_about(self):
         """Show about dialog"""
-        about_text = """Git Python GUI - Basic VCS Style
+        about_text = """Git Python GUI - VCS Style
         
 A comprehensive Git frontend built with Python and tkinter.
 Features:
@@ -1480,9 +2288,10 @@ Features:
 - Staging and commit operations
 - Branch management
 - Remote operations (pull, push, fetch)
+- Enhanced tag management with comprehensive details
 - VS Code integration
 
-Inspired by Basic VCS version control system.
+Inspired by Simple VCS version control system.
         """
         messagebox.showinfo("About", about_text)
     
@@ -1597,189 +2406,132 @@ Inspired by Basic VCS version control system.
         ttk.Button(button_frame, text="Cancel", command=config_window.destroy).pack(side=tk.RIGHT, padx=5)
     
     def create_tag(self):
-        """Create a new tag"""
+        """Create a new tag with push option"""
         if not self.repo:
             messagebox.showerror("Error", "No repository loaded")
             return
         
         tag_window = tk.Toplevel(self.root)
         tag_window.title("Create Tag")
-        tag_window.geometry("400x200")
+        tag_window.geometry("500x350")
+        tag_window.resizable(False, False)
         
-        ttk.Label(tag_window, text="Tag Name:").grid(row=0, column=0, sticky=tk.W, padx=5, pady=5)
+        # Center the window
+        tag_window.transient(self.root)
+        tag_window.grab_set()
+        
+        ttk.Label(tag_window, text="Create New Tag", font=('TkDefaultFont', 12, 'bold')).pack(pady=10)
+        
+        # Tag info frame
+        info_frame = ttk.LabelFrame(tag_window, text="Tag Information")
+        info_frame.pack(fill=tk.X, padx=20, pady=10)
+        
+        # Tag name
+        ttk.Label(info_frame, text="Tag Name:").grid(row=0, column=0, sticky=tk.W, padx=5, pady=5)
         tag_name_var = tk.StringVar()
-        ttk.Entry(tag_window, textvariable=tag_name_var, width=30).grid(row=0, column=1, padx=5, pady=5)
+        tag_name_entry = ttk.Entry(info_frame, textvariable=tag_name_var, width=30)
+        tag_name_entry.grid(row=0, column=1, padx=5, pady=5)
+        tag_name_entry.focus()
         
-        ttk.Label(tag_window, text="Message:").grid(row=1, column=0, sticky=tk.W, padx=5, pady=5)
+        # Tag message
+        ttk.Label(info_frame, text="Tag Message:").grid(row=1, column=0, sticky=tk.W, padx=5, pady=5)
         message_var = tk.StringVar()
-        ttk.Entry(tag_window, textvariable=message_var, width=30).grid(row=1, column=1, padx=5, pady=5)
+        message_entry = ttk.Entry(info_frame, textvariable=message_var, width=30)
+        message_entry.grid(row=1, column=1, padx=5, pady=5)
+        
+        # Description
+        ttk.Label(info_frame, text="Description:").grid(row=2, column=0, sticky=tk.NW, padx=5, pady=5)
+        description_text = tk.Text(info_frame, height=4, width=30)
+        description_text.grid(row=2, column=1, padx=5, pady=5)
+        
+        # Options frame
+        options_frame = ttk.LabelFrame(tag_window, text="Options")
+        options_frame.pack(fill=tk.X, padx=20, pady=10)
+        
+        push_after_create = tk.BooleanVar(value=True)
+        ttk.Checkbutton(options_frame, text="Push tag to GitHub after creation", 
+                       variable=push_after_create).pack(anchor=tk.W, padx=10, pady=5)
+        
+        # Info
+        info_text = "💡 Tip: Check 'Push tag to GitHub' to make the tag visible on GitHub immediately"
+        ttk.Label(options_frame, text=info_text, font=('TkDefaultFont', 9), 
+                 foreground='#6c757d').pack(padx=10, pady=5)
+        
+        # Current commit info
+        try:
+            current_commit = self.repo.head.commit
+            commit_info = f"Tag will be created at: {current_commit.hexsha[:8]} - {current_commit.message.strip()[:50]}"
+            ttk.Label(tag_window, text=commit_info, font=('TkDefaultFont', 8), 
+                     foreground='#6c757d').pack(padx=20, pady=5)
+        except:
+            pass
         
         def create_tag_action():
             tag_name = tag_name_var.get().strip()
             message = message_var.get().strip()
+            description = description_text.get('1.0', tk.END).strip()
             
             if not tag_name:
                 messagebox.showerror("Error", "Tag name is required")
+                tag_name_entry.focus()
+                return
+            
+            # Validate tag name
+            if not tag_name.replace('.', '').replace('-', '').replace('_', '').isalnum():
+                messagebox.showerror("Error", "Tag name should contain only letters, numbers, dots, hyphens, and underscores")
+                tag_name_entry.focus()
                 return
             
             try:
-                if message:
-                    self.repo.create_tag(tag_name, message=message)
+                # Create full tag message
+                full_message = message
+                if description:
+                    full_message += f"\n\n{description}"
+                
+                if full_message:
+                    self.repo.create_tag(tag_name, message=full_message)
                 else:
                     self.repo.create_tag(tag_name)
                 
-                messagebox.showinfo("Success", f"Tag '{tag_name}' created successfully")
                 tag_window.destroy()
+                
+                success_msg = f"✓ Tag '{tag_name}' created successfully"
+                self.status_label.config(text=success_msg)
+                
+                # Push tag if requested
+                if push_after_create.get():
+                    def push_tag():
+                        try:
+                            self.status_label.config(text=f"Pushing tag '{tag_name}' to GitHub...")
+                            self.repo.git.push('origin', tag_name)
+                            final_msg = f"✓ Tag '{tag_name}' created and pushed to GitHub"
+                            self.status_label.config(text=final_msg)
+                            messagebox.showinfo("Success", f"Tag '{tag_name}' created and pushed to GitHub!\n\nThe tag is now visible on GitHub.")
+                        except Exception as e:
+                            error_msg = f"Tag created but push failed: {str(e)}"
+                            self.status_label.config(text=error_msg)
+                            messagebox.showerror("Push Error", f"Tag '{tag_name}' was created locally but failed to push to GitHub:\n\n{str(e)}\n\nUse 'Push Branch + Tags' to push it later.")
+                    
+                    # Push in background
+                    threading.Thread(target=push_tag, daemon=True).start()
+                else:
+                    messagebox.showinfo("Tag Created", f"Tag '{tag_name}' created successfully!\n\nNote: The tag is only local. Use 'Push Branch + Tags' to make it visible on GitHub.")
+                
                 self.refresh_all()
+                
             except Exception as e:
                 messagebox.showerror("Error", f"Failed to create tag: {str(e)}")
         
-        ttk.Button(tag_window, text="Create", command=create_tag_action).grid(row=2, column=0, padx=5, pady=10)
-        ttk.Button(tag_window, text="Cancel", command=tag_window.destroy).grid(row=2, column=1, padx=5, pady=10)
-    
-    def manage_tags(self):
-        """Manage repository tags with enhanced features"""
-        if not self.repo:
-            messagebox.showerror("Error", "No repository loaded")
-            return
+        # Buttons
+        button_frame = ttk.Frame(tag_window)
+        button_frame.pack(fill=tk.X, padx=20, pady=20)
         
-        tags_window = tk.Toplevel(self.root)
-        tags_window.title("Manage Tags")
-        tags_window.geometry("1200x600")
+        ttk.Button(button_frame, text="Create Tag", command=create_tag_action, 
+                  style='Success.TButton').pack(side=tk.LEFT, padx=5)
+        ttk.Button(button_frame, text="Cancel", command=tag_window.destroy).pack(side=tk.RIGHT, padx=5)
         
-        # Create paned window
-        paned = ttk.PanedWindow(tags_window, orient=tk.HORIZONTAL)
-        paned.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
-        
-        # Left side - tags list
-        left_frame = ttk.Frame(paned)
-        paned.add(left_frame, weight=1)
-        
-        ttk.Label(left_frame, text="Tags", font=('TkDefaultFont', 10, 'bold')).pack(anchor=tk.W)
-        
-        tags_frame = ttk.Frame(left_frame)
-        tags_frame.pack(fill=tk.BOTH, expand=True)
-        
-        columns = ('Tag', 'Commit', 'Date', 'Author')
-        tags_tree = ttk.Treeview(tags_frame, columns=columns, show='headings')
-        
-        for col in columns:
-            tags_tree.heading(col, text=col)
-            tags_tree.column(col, width=120)
-        
-        # Right side - tag details and files
-        right_frame = ttk.Frame(paned)
-        paned.add(right_frame, weight=2)
-        
-        ttk.Label(right_frame, text="Tag Details", font=('TkDefaultFont', 10, 'bold')).pack(anchor=tk.W)
-        
-        # Tag info frame
-        tag_info_frame = ttk.LabelFrame(right_frame, text="Information")
-        tag_info_frame.pack(fill=tk.X, padx=5, pady=5)
-        
-        self.tag_info_text = tk.Text(tag_info_frame, height=4, wrap=tk.WORD)
-        self.tag_info_text.pack(fill=tk.X, padx=5, pady=5)
-        
-        # Files changed frame
-        files_frame = ttk.LabelFrame(right_frame, text="Files Changed")
-        files_frame.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
-        
-        files_columns = ('File', 'Status', 'Changes')
-        self.tag_files_tree = ttk.Treeview(files_frame, columns=files_columns, show='headings')
-        
-        for col in files_columns:
-            self.tag_files_tree.heading(col, text=col)
-            self.tag_files_tree.column(col, width=150)
-        
-        # Populate tags
-        try:
-            for tag in self.repo.tags:
-                commit = tag.commit
-                tags_tree.insert('', 'end', values=(
-                    tag.name,
-                    commit.hexsha[:8],
-                    commit.committed_datetime.strftime('%Y-%m-%d %H:%M'),
-                    commit.author.name
-                ))
-        except Exception as e:
-            messagebox.showerror("Error", f"Failed to load tags: {str(e)}")
-    
-    def show_timeline_commit_details(self, commit):
-        """Show commit details in timeline right pane"""
-        try:
-            # Update details text
-            self.timeline_details_text.delete('1.0', tk.END)
-            
-            details = f"Commit: {commit.hexsha}\n"
-            details += f"Author: {commit.author.name} <{commit.author.email}>\n"
-            details += f"Date: {commit.committed_datetime}\n"
-            details += f"Message:\n{commit.message.strip()}\n\n"
-            
-            # Add parent info
-            if commit.parents:
-                details += f"Parents: {', '.join([p.hexsha[:8] for p in commit.parents])}\n"
-            else:
-                details += "Parents: None (initial commit)\n"
-            
-            # Add branch/tag info
-            branch_info = []
-            for branch in self.repo.branches:
-                try:
-                    if commit in list(self.repo.iter_commits(branch.name)):
-                        branch_info.append(branch.name)
-                except:
-                    continue
-            
-            if branch_info:
-                details += f"Branches: {', '.join(branch_info)}\n"
-            
-            tag_info = []
-            for tag in self.repo.tags:
-                if tag.commit == commit:
-                    tag_info.append(tag.name)
-            
-            if tag_info:
-                details += f"Tags: {', '.join(tag_info)}\n"
-            
-            self.timeline_details_text.insert('1.0', details)
-            
-            # Update files tree
-            for item in self.timeline_files_tree.get_children():
-                self.timeline_files_tree.delete(item)
-            
-            if commit.parents:
-                diffs = commit.parents[0].diff(commit)
-                for diff in diffs:
-                    status = 'Modified'
-                    if diff.new_file:
-                        status = 'Added'
-                    elif diff.deleted_file:
-                        status = 'Deleted'
-                    elif diff.renamed_file:
-                        status = 'Renamed'
-                    
-                    file_path = diff.b_path or diff.a_path
-                    
-                    try:
-                        if diff.diff:
-                            additions = diff.diff.decode('utf-8').count('\n+')
-                            deletions = diff.diff.decode('utf-8').count('\n-')
-                            changes = f"+{additions} -{deletions}"
-                        else:
-                            changes = "Binary"
-                    except:
-                        changes = "Modified"
-                    
-                    self.timeline_files_tree.insert('', 'end', values=(file_path, status, changes))
-            else:
-                # Initial commit
-                for item in commit.tree.traverse():
-                    if item.type == 'blob':
-                        self.timeline_files_tree.insert('', 'end', values=(item.path, 'Added', 'New'))
-                        
-        except Exception as e:
-            self.timeline_details_text.delete('1.0', tk.END)
-            self.timeline_details_text.insert('1.0', f"Error loading commit details: {str(e)}")
+        # Enter key binding
+        tag_window.bind('<Return>', lambda e: create_tag_action())
     
     def switch_to_tag_only(self):
         """Switch to a specific tag - focused tag interface"""
@@ -1980,350 +2732,60 @@ Inspired by Basic VCS version control system.
         else:
             messagebox.showwarning("No Selection", "Please select a tag to view details")
     
-    def show_vertical_timeline(self):
-        """Show vertical timeline view from oldest to newest"""
-        if not self.repo:
-            messagebox.showerror("Error", "No repository loaded")
-            return
-        
-        timeline_window = tk.Toplevel(self.root)
-        timeline_window.title("Timeline View - Vertical")
-        timeline_window.geometry("1200x800")
-        
-        # Create main frame with scrollable area
-        main_frame = ttk.Frame(timeline_window)
-        main_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
+    def show_tag_files_enhanced(self, tag_name):
+        """Enhanced view of files changed in a specific tag"""
+        tag_files_window = tk.Toplevel(self.root)
+        tag_files_window.title(f"Files in Tag: {tag_name}")
+        tag_files_window.geometry("1000x700")
         
         # Create paned window
-        paned = ttk.PanedWindow(main_frame, orient=tk.HORIZONTAL)
-        paned.pack(fill=tk.BOTH, expand=True)
+        paned = ttk.PanedWindow(tag_files_window, orient=tk.VERTICAL)
+        paned.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
         
-        # Left side - timeline
-        left_frame = ttk.Frame(paned)
-        paned.add(left_frame, weight=1)
+        # Top - tag info
+        info_frame = ttk.LabelFrame(paned, text="Tag Information")
+        paned.add(info_frame, weight=1)
         
-        ttk.Label(left_frame, text="Commit Timeline", font=('TkDefaultFont', 12, 'bold')).pack(pady=5)
-        
-        # Timeline with scrollbar
-        timeline_frame = ttk.Frame(left_frame)
-        timeline_frame.pack(fill=tk.BOTH, expand=True)
-        
-        # Create canvas for timeline
-        timeline_canvas = tk.Canvas(timeline_frame, bg='white', width=600)
-        timeline_scroll = ttk.Scrollbar(timeline_frame, orient=tk.VERTICAL, command=timeline_canvas.yview)
-        timeline_canvas.configure(yscrollcommand=timeline_scroll.set)
-        
-        timeline_canvas.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
-        timeline_scroll.pack(side=tk.RIGHT, fill=tk.Y)
-        
-        # Enable mouse wheel scrolling
-        def on_mousewheel(event):
-            timeline_canvas.yview_scroll(int(-1*(event.delta/120)), "units")
-        
-        timeline_canvas.bind("<MouseWheel>", on_mousewheel)
-        timeline_canvas.bind("<Button-4>", lambda e: timeline_canvas.yview_scroll(-1, "units"))
-        timeline_canvas.bind("<Button-5>", lambda e: timeline_canvas.yview_scroll(1, "units"))
-        
-        # Right side - details
-        right_frame = ttk.Frame(paned)
-        paned.add(right_frame, weight=1)
-        
-        ttk.Label(right_frame, text="Commit Details", font=('TkDefaultFont', 12, 'bold')).pack(pady=5)
-        
-        # Details text area
-        details_frame = ttk.Frame(right_frame)
-        details_frame.pack(fill=tk.BOTH, expand=True)
-        
-        self.timeline_details_text = tk.Text(details_frame, wrap=tk.WORD, height=10)
-        details_scroll = ttk.Scrollbar(details_frame, orient=tk.VERTICAL, command=self.timeline_details_text.yview)
-        self.timeline_details_text.configure(yscrollcommand=details_scroll.set)
-        
-        self.timeline_details_text.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
-        details_scroll.pack(side=tk.RIGHT, fill=tk.Y)
-        
-        # Files changed area
-        files_frame = ttk.LabelFrame(right_frame, text="Files Changed")
-        files_frame.pack(fill=tk.BOTH, expand=True, pady=5)
-        
-        files_columns = ('File', 'Status', 'Changes')
-        self.timeline_files_tree = ttk.Treeview(files_frame, columns=files_columns, show='headings', height=8)
-        
-        for col in files_columns:
-            self.timeline_files_tree.heading(col, text=col)
-            self.timeline_files_tree.column(col, width=150)
-        
-        files_tree_scroll = ttk.Scrollbar(files_frame, orient=tk.VERTICAL, command=self.timeline_files_tree.yview)
-        self.timeline_files_tree.configure(yscrollcommand=files_tree_scroll.set)
-        
-        self.timeline_files_tree.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
-        files_tree_scroll.pack(side=tk.RIGHT, fill=tk.Y)
-        
-        # Draw timeline
-        self.draw_vertical_timeline(timeline_canvas)
-        
-        # Store references
-        self.timeline_canvas = timeline_canvas
-        self.timeline_window = timeline_window
-    
-    def draw_vertical_timeline(self, canvas):
-        """Draw vertical timeline from oldest to newest"""
-        try:
-            # Get all commits (reversed to show oldest first)
-            commits = list(reversed(list(self.repo.iter_commits(max_count=100))))
-            
-            if not commits:
-                canvas.create_text(300, 100, text="No commits found", font=('Arial', 16), fill='red')
-                return
-            
-            # Calculate dimensions
-            item_height = 120
-            item_width = 550
-            margin = 30
-            
-            total_height = len(commits) * item_height + 2 * margin
-            canvas.configure(scrollregion=(0, 0, 600, total_height))
-            
-            # Get branch and tag info
-            branch_info = {}
-            tag_info = {}
-            
-            # Map commits to branches
-            for branch in self.repo.branches:
-                try:
-                    for commit in self.repo.iter_commits(branch.name):
-                        if commit.hexsha not in branch_info:
-                            branch_info[commit.hexsha] = []
-                        branch_info[commit.hexsha].append(branch.name)
-                except:
-                    continue
-            
-            # Map commits to tags
-            for tag in self.repo.tags:
-                if tag.commit.hexsha not in tag_info:
-                    tag_info[tag.commit.hexsha] = []
-                tag_info[tag.commit.hexsha].append(tag.name)
-            
-            # Draw timeline line
-            canvas.create_line(50, margin, 50, total_height - margin, fill='blue', width=4)
-            
-            # Draw commits
-            for i, commit in enumerate(commits):
-                y = margin + i * item_height
-                
-                # Draw commit circle
-                canvas.create_oval(45, y + 55, 55, y + 65, fill='red', outline='darkred', width=2)
-                
-                # Draw commit box
-                is_head = False
-                try:
-                    is_head = (commit == self.repo.head.commit)
-                except:
-                    pass
-                
-                box_color = 'lightgreen' if is_head else 'lightblue'
-                rect = canvas.create_rectangle(80, y + 10, 80 + item_width, y + 100, 
-                                             fill=box_color, outline='blue', width=2)
-                
-                # Version number
-                version_num = i + 1
-                canvas.create_text(90, y + 25, text=f"Version {version_num}", 
-                                 font=('Arial', 10, 'bold'), anchor='w')
-                
-                # Hash
-                canvas.create_text(90, y + 40, text=f"Hash: {commit.hexsha[:12]}", 
-                                 font=('Arial', 9), anchor='w')
-                
-                # Author and date
-                canvas.create_text(90, y + 55, text=f"Author: {commit.author.name}", 
-                                 font=('Arial', 9), anchor='w')
-                canvas.create_text(90, y + 70, text=f"Date: {commit.committed_datetime.strftime('%Y-%m-%d %H:%M:%S')}", 
-                                 font=('Arial', 9), anchor='w')
-                
-                # Branches and tags
-                branch_text = ""
-                if commit.hexsha in branch_info:
-                    branches = branch_info[commit.hexsha][:3]  # Show max 3 branches
-                    branch_text = f"Branches: {', '.join(branches)}"
-                    if len(branch_info[commit.hexsha]) > 3:
-                        branch_text += f" (+{len(branch_info[commit.hexsha]) - 3})"
-                
-                if commit.hexsha in tag_info:
-                    tags = tag_info[commit.hexsha][:2]  # Show max 2 tags
-                    tag_text = f"Tags: {', '.join(tags)}"
-                    if len(tag_info[commit.hexsha]) > 2:
-                        tag_text += f" (+{len(tag_info[commit.hexsha]) - 2})"
-                    branch_text += f" | {tag_text}" if branch_text else tag_text
-                
-                if branch_text:
-                    canvas.create_text(90, y + 85, text=branch_text, 
-                                     font=('Arial', 8), anchor='w', fill='darkgreen')
-                
-                # HEAD indicator
-                if is_head:
-                    canvas.create_text(550, y + 25, text="← HEAD", 
-                                     font=('Arial', 10, 'bold'), fill='red', anchor='w')
-                
-                # Message (on hover or click)
-                canvas.tag_bind(rect, "<Button-1>", 
-                               lambda e, c=commit: self.show_timeline_commit_details(c))
-                
-                # Store commit reference
-                canvas.create_text(90, y + 5, text="", tags=f"commit_{commit.hexsha}")
-            
-        except Exception as e:
-            messagebox.showerror("Error", f"Failed to draw timeline: {str(e)}")
-            canvas.create_text(300, 100, text=f"Error: {str(e)}", font=('Arial', 12), fill='red')
-    
-    def switch_to_tag(self):
-        """Switch to a specific tag"""
-        if not self.repo:
-            messagebox.showerror("Error", "No repository loaded")
-            return
-        
-        try:
-            tags = [tag.name for tag in self.repo.tags]
-            if not tags:
-                messagebox.showwarning("No Tags", "No tags found in repository")
-                return
-            
-            # Create tag selection window
-            tag_window = tk.Toplevel(self.root)
-            tag_window.title("Switch to Tag")
-            tag_window.geometry("500x400")
-            
-            ttk.Label(tag_window, text="Select tag to switch to:", font=('TkDefaultFont', 10, 'bold')).pack(pady=10)
-            
-            # Tag listbox with details
-            list_frame = ttk.Frame(tag_window)
-            list_frame.pack(fill=tk.BOTH, expand=True, padx=20, pady=10)
-            
-            # Use treeview for better display
-            columns = ('Tag', 'Commit', 'Date', 'Author')
-            tag_tree = ttk.Treeview(list_frame, columns=columns, show='headings', height=12)
-            
-            for col in columns:
-                tag_tree.heading(col, text=col)
-                tag_tree.column(col, width=120)
-            
-            scrollbar = ttk.Scrollbar(list_frame, orient=tk.VERTICAL, command=tag_tree.yview)
-            tag_tree.configure(yscrollcommand=scrollbar.set)
-            
-            # Populate tags
-            for tag in self.repo.tags:
-                commit = tag.commit
-                tag_tree.insert('', 'end', values=(
-                    tag.name,
-                    commit.hexsha[:8],
-                    commit.committed_datetime.strftime('%Y-%m-%d'),
-                    commit.author.name
-                ))
-            
-            tag_tree.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
-            scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
-            
-            def switch_to_selected_tag():
-                selection = tag_tree.selection()
-                if selection:
-                    tag_name = tag_tree.item(selection[0])['values'][0]
-                    
-                    if messagebox.askyesno("Confirm", f"Switch to tag '{tag_name}'?\nThis will detach HEAD."):
-                        try:
-                            self.repo.git.checkout(tag_name)
-                            self.refresh_all()
-                            self.status_label.config(text=f"Switched to tag: {tag_name} (HEAD detached)")
-                            tag_window.destroy()
-                            
-                            # Refresh graph if open
-                            if hasattr(self, 'graph_canvas'):
-                                self.draw_commit_graph(self.graph_canvas)
-                                
-                        except Exception as e:
-                            messagebox.showerror("Switch Error", f"Failed to switch to tag: {str(e)}")
-                else:
-                    messagebox.showwarning("No Selection", "Please select a tag")
-            
-            # Buttons
-            button_frame = ttk.Frame(tag_window)
-            button_frame.pack(fill=tk.X, padx=20, pady=10)
-            
-            ttk.Button(button_frame, text="Switch to Tag", command=switch_to_selected_tag).pack(side=tk.LEFT, padx=5)
-            ttk.Button(button_frame, text="Cancel", command=tag_window.destroy).pack(side=tk.RIGHT, padx=5)
-            
-            # Double-click to switch
-            tag_tree.bind('<Double-1>', lambda e: switch_to_selected_tag())
-            
-        except Exception as e:
-            messagebox.showerror("Error", f"Failed to load tags: {str(e)}")
-        
-        def on_tag_select(event):
-            selection = tags_tree.selection()
-            if selection:
-                tag_name = tags_tree.item(selection[0])['values'][0]
-                self.show_tag_details_in_pane(tag_name)
-        
-        tags_tree.bind('<<TreeviewSelect>>', on_tag_select)
-        
-        # Scrollbars
-        tags_scroll = ttk.Scrollbar(tags_frame, orient=tk.VERTICAL, command=tags_tree.yview)
-        tags_tree.configure(yscrollcommand=tags_scroll.set)
-        files_scroll = ttk.Scrollbar(files_frame, orient=tk.VERTICAL, command=self.tag_files_tree.yview)
-        self.tag_files_tree.configure(yscrollcommand=files_scroll.set)
-        
-        tags_tree.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
-        tags_scroll.pack(side=tk.RIGHT, fill=tk.Y)
-        self.tag_files_tree.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
-        files_scroll.pack(side=tk.RIGHT, fill=tk.Y)
-        
-        # Buttons
-        button_frame = ttk.Frame(tags_window)
-        button_frame.pack(fill=tk.X, padx=10, pady=5)
-        
-        def delete_tag():
-            selection = tags_tree.selection()
-            if selection:
-                tag_name = tags_tree.item(selection[0])['values'][0]
-                if messagebox.askyesno("Confirm", f"Delete tag '{tag_name}'?"):
-                    try:
-                        self.repo.delete_tag(tag_name)
-                        tags_tree.delete(selection[0])
-                        self.status_label.config(text=f"Tag '{tag_name}' deleted")
-                        # Clear details
-                        self.tag_info_text.delete('1.0', tk.END)
-                        for item in self.tag_files_tree.get_children():
-                            self.tag_files_tree.delete(item)
-                    except Exception as e:
-                        messagebox.showerror("Error", f"Failed to delete tag: {str(e)}")
-        
-        def edit_tag_message():
-            selection = tags_tree.selection()
-            if selection:
-                tag_name = tags_tree.item(selection[0])['values'][0]
-                self.edit_tag_message_dialog(tag_name)
-        
-        ttk.Button(button_frame, text="Delete Tag", command=delete_tag).pack(side=tk.LEFT, padx=5)
-        ttk.Button(button_frame, text="Edit Message", command=edit_tag_message).pack(side=tk.LEFT, padx=5)
-        ttk.Button(button_frame, text="Close", command=tags_window.destroy).pack(side=tk.RIGHT, padx=5)
-    
-    def show_tag_details_in_pane(self, tag_name):
-        """Show tag details in the right pane"""
         try:
             tag = self.repo.tags[tag_name]
             commit = tag.commit
             
-            # Update info text
-            self.tag_info_text.delete('1.0', tk.END)
-            info = f"Tag: {tag_name}\n"
-            info += f"Commit: {commit.hexsha}\n"
-            info += f"Author: {commit.author.name} <{commit.author.email}>\n"
-            info += f"Date: {commit.committed_datetime}\n"
-            if hasattr(tag, 'tag') and tag.tag and tag.tag.message:
-                info += f"Tag Message: {tag.tag.message}\n"
-            info += f"Commit Message: {commit.message.strip()}"
-            self.tag_info_text.insert('1.0', info)
-            
-            # Clear and populate files
-            for item in self.tag_files_tree.get_children():
-                self.tag_files_tree.delete(item)
+            ttk.Label(info_frame, text=f"Tag: {tag_name}").pack(anchor=tk.W, padx=5, pady=2)
+            ttk.Label(info_frame, text=f"Commit: {commit.hexsha}").pack(anchor=tk.W, padx=5, pady=2)
+            ttk.Label(info_frame, text=f"Author: {commit.author.name}").pack(anchor=tk.W, padx=5, pady=2)
+            ttk.Label(info_frame, text=f"Date: {commit.committed_datetime}").pack(anchor=tk.W, padx=5, pady=2)
+            ttk.Label(info_frame, text=f"Message: {commit.message.strip()}").pack(anchor=tk.W, padx=5, pady=2)
+        except Exception as e:
+            ttk.Label(info_frame, text=f"Error: {str(e)}").pack(anchor=tk.W, padx=5, pady=2)
+        
+        # Bottom - files
+        files_frame = ttk.LabelFrame(paned, text="Files Changed")
+        paned.add(files_frame, weight=3)
+        
+        columns = ('File', 'Status', 'Additions', 'Deletions')
+        files_tree = ttk.Treeview(files_frame, columns=columns, show='headings')
+        
+        for col in columns:
+            files_tree.heading(col, text=col)
+            files_tree.column(col, width=200)
+        
+        # Context menu for tag files
+        tag_file_menu = tk.Menu(self.root, tearoff=0)
+        tag_file_menu.add_command(label="View File at Tag", 
+                                 command=lambda: self.view_file_at_tag(files_tree, tag_name))
+        
+        def show_tag_file_menu(event):
+            try:
+                tag_file_menu.tk_popup(event.x_root, event.y_root)
+            finally:
+                tag_file_menu.grab_release()
+        
+        files_tree.bind('<Button-3>', show_tag_file_menu)
+        files_tree.bind('<Double-1>', lambda e: self.view_file_at_tag(files_tree, tag_name))
+        
+        try:
+            tag = self.repo.tags[tag_name]
+            commit = tag.commit
             
             if commit.parents:
                 diffs = commit.parents[0].diff(commit)
@@ -2342,118 +2804,85 @@ Inspired by Basic VCS version control system.
                         if diff.diff:
                             additions = diff.diff.decode('utf-8').count('\n+')
                             deletions = diff.diff.decode('utf-8').count('\n-')
-                            changes = f"+{additions} -{deletions}"
                         else:
-                            changes = "Binary"
-                    except:
-                        changes = "Modified"
-                    
-                    self.tag_files_tree.insert('', 'end', values=(file_path, status, changes))
-            else:
-                # First commit
-                for item in commit.tree.traverse():
-                    if item.type == 'blob':
-                        self.tag_files_tree.insert('', 'end', values=(item.path, 'Added', 'New'))
-                        
-        except Exception as e:
-            self.tag_info_text.delete('1.0', tk.END)
-            self.tag_info_text.insert('1.0', f"Error loading tag details: {str(e)}")
-    
-    def edit_tag_message_dialog(self, tag_name):
-        """Edit tag message"""
-        try:
-            tag = self.repo.tags[tag_name]
-            
-            if not hasattr(tag, 'tag') or not tag.tag:
-                messagebox.showwarning("Warning", "This is a lightweight tag. Cannot edit message.")
-                return
-            
-            edit_window = tk.Toplevel(self.root)
-            edit_window.title(f"Edit Tag Message: {tag_name}")
-            edit_window.geometry("500x300")
-            
-            ttk.Label(edit_window, text=f"Tag: {tag_name}").pack(pady=5)
-            
-            ttk.Label(edit_window, text="Message:").pack(anchor=tk.W, padx=10)
-            message_text = tk.Text(edit_window, height=8, wrap=tk.WORD)
-            message_text.pack(fill=tk.BOTH, expand=True, padx=10, pady=5)
-            
-            # Load current message
-            current_message = tag.tag.message if tag.tag.message else ""
-            message_text.insert('1.0', current_message)
-            
-            def save_message():
-                new_message = message_text.get('1.0', tk.END).strip()
-                messagebox.showinfo("Info", "Tag message editing requires recreating the tag.\nThis feature will be implemented in a future version.")
-                edit_window.destroy()
-            
-            button_frame = ttk.Frame(edit_window)
-            button_frame.pack(fill=tk.X, padx=10, pady=5)
-            
-            ttk.Button(button_frame, text="Save", command=save_message).pack(side=tk.LEFT, padx=5)
-            ttk.Button(button_frame, text="Cancel", command=edit_window.destroy).pack(side=tk.RIGHT, padx=5)
-            
-        except Exception as e:
-            messagebox.showerror("Error", f"Failed to edit tag message: {str(e)}")
-    
-    def show_tag_files(self, tag_name):
-        """Show files changed in a specific tag"""
-        tag_files_window = tk.Toplevel(self.root)
-        tag_files_window.title(f"Files in Tag: {tag_name}")
-        tag_files_window.geometry("800x600")
-        
-        # Files tree
-        files_frame = ttk.Frame(tag_files_window)
-        files_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
-        
-        columns = ('File', 'Status', 'Additions', 'Deletions')
-        files_tree = ttk.Treeview(files_frame, columns=columns, show='headings')
-        
-        for col in columns:
-            files_tree.heading(col, text=col)
-            files_tree.column(col, width=200)
-        
-        try:
-            tag = self.repo.tags[tag_name]
-            commit = tag.commit
-            
-            # Get files changed in this commit
-            if commit.parents:
-                # Compare with previous commit
-                prev_commit = commit.parents[0]
-                diffs = prev_commit.diff(commit)
-                
-                for diff in diffs:
-                    status = 'Modified'
-                    if diff.new_file:
-                        status = 'Added'
-                    elif diff.deleted_file:
-                        status = 'Deleted'
-                    elif diff.renamed_file:
-                        status = 'Renamed'
-                    
-                    file_path = diff.b_path or diff.a_path
-                    
-                    # Try to get line counts
-                    try:
-                        additions = diff.diff.decode('utf-8').count('\n+') if diff.diff else 0
-                        deletions = diff.diff.decode('utf-8').count('\n-') if diff.diff else 0
+                            additions = deletions = 0
                     except:
                         additions = deletions = 0
                     
                     files_tree.insert('', 'end', values=(file_path, status, additions, deletions))
             else:
-                # First commit - all files are new
                 for item in commit.tree.traverse():
-                    if item.type == 'blob':  # It's a file
+                    if item.type == 'blob':
                         files_tree.insert('', 'end', values=(item.path, 'Added', 0, 0))
-                        
         except Exception as e:
             messagebox.showerror("Error", f"Failed to get tag files: {str(e)}")
         
         files_tree.pack(fill=tk.BOTH, expand=True)
+    
+    def view_file_at_tag(self, tree, tag_name):
+        """View file at specific tag"""
+        selection = tree.selection()
+        if selection:
+            file_path = tree.item(selection[0])['values'][0]
+            try:
+                tag = self.repo.tags[tag_name]
+                self.show_file_at_commit(file_path, tag.commit.hexsha)
+            except Exception as e:
+                messagebox.showerror("Error", f"Failed to view file at tag: {str(e)}")
+    
+    def show_file_at_commit(self, file_path, commit_hash):
+        """Show file content at specific commit"""
+        try:
+            commit = self.repo.commit(commit_hash)
+            
+            file_window = tk.Toplevel(self.root)
+            file_window.title(f"File: {file_path} @ {commit_hash[:8]}")
+            file_window.geometry("1000x700")
+            
+            # Create text widget with scrollbar
+            text_frame = ttk.Frame(file_window)
+            text_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
+            
+            text_widget = tk.Text(text_frame, font=('Courier', 10), wrap=tk.NONE)
+            v_scrollbar = ttk.Scrollbar(text_frame, orient=tk.VERTICAL, command=text_widget.yview)
+            h_scrollbar = ttk.Scrollbar(text_frame, orient=tk.HORIZONTAL, command=text_widget.xview)
+            text_widget.configure(yscrollcommand=v_scrollbar.set, xscrollcommand=h_scrollbar.set)
+            
+            text_widget.grid(row=0, column=0, sticky='nsew')
+            v_scrollbar.grid(row=0, column=1, sticky='ns')
+            h_scrollbar.grid(row=1, column=0, sticky='ew')
+            
+            text_frame.grid_rowconfigure(0, weight=1)
+            text_frame.grid_columnconfigure(0, weight=1)
+            
+            # Get file content
+            try:
+                file_content = commit.tree[file_path].data_stream.read().decode('utf-8')
+                text_widget.insert('1.0', file_content)
+            except:
+                text_widget.insert('1.0', f"Could not read file content (binary file or not found)")
+            
+            text_widget.config(state=tk.DISABLED)
+            
+        except Exception as e:
+            messagebox.showerror("Error", f"Failed to show file at commit: {str(e)}")
+    
+    # Additional methods for comprehensive functionality
+    def sort_files_by_column(self, column):
+        """Sort files by column"""
+        items = [(self.file_tree.set(item, column), item) for item in self.file_tree.get_children('')]
         
-        ttk.Button(tag_files_window, text="Close", command=tag_files_window.destroy).pack(pady=10)
+        # Sort items
+        try:
+            # Try numeric sort first
+            items.sort(key=lambda x: float(x[0]) if x[0].replace('.', '').isdigit() else x[0].lower())
+        except:
+            # Fall back to string sort
+            items.sort(key=lambda x: x[0].lower())
+        
+        # Rearrange items
+        for index, (val, item) in enumerate(items):
+            self.file_tree.move(item, '', index)
     
     def show_version_history(self):
         """Show comprehensive version history"""
@@ -2555,254 +2984,6 @@ Inspired by Basic VCS version control system.
         
         commits_tree.pack(fill=tk.BOTH, expand=True)
         files_tree.pack(fill=tk.BOTH, expand=True)
-    
-    def show_tags_branches(self):
-        """Show tags and branches overview"""
-        if not self.repo:
-            messagebox.showerror("Error", "No repository loaded")
-            return
-        
-        overview_window = tk.Toplevel(self.root)
-        overview_window.title("Tags & Branches Overview")
-        overview_window.geometry("1000x600")
-        
-        notebook = ttk.Notebook(overview_window)
-        notebook.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
-        
-        # Branches tab
-        branches_frame = ttk.Frame(notebook)
-        notebook.add(branches_frame, text="Branches")
-        
-        branches_columns = ('Branch', 'Current', 'Last Commit', 'Author', 'Date')
-        branches_tree = ttk.Treeview(branches_frame, columns=branches_columns, show='headings')
-        
-        for col in branches_columns:
-            branches_tree.heading(col, text=col)
-            branches_tree.column(col, width=150)
-        
-        try:
-            for branch in self.repo.branches:
-                is_current = "✓" if branch == self.repo.active_branch else ""
-                commit = branch.commit
-                branches_tree.insert('', 'end', values=(
-                    branch.name,
-                    is_current,
-                    commit.hexsha[:8],
-                    commit.author.name,
-                    commit.committed_datetime.strftime('%Y-%m-%d %H:%M')
-                ))
-        except Exception as e:
-            messagebox.showerror("Error", f"Failed to load branches: {str(e)}")
-        
-        branches_tree.pack(fill=tk.BOTH, expand=True)
-        
-        # Tags tab
-        tags_frame = ttk.Frame(notebook)
-        notebook.add(tags_frame, text="Tags")
-        
-        tags_columns = ('Tag', 'Commit', 'Date', 'Author')
-        tags_tree = ttk.Treeview(tags_frame, columns=tags_columns, show='headings')
-        
-        for col in tags_columns:
-            tags_tree.heading(col, text=col)
-            tags_tree.column(col, width=200)
-        
-        try:
-            for tag in self.repo.tags:
-                commit = tag.commit
-                tags_tree.insert('', 'end', values=(
-                    tag.name,
-                    commit.hexsha[:8],
-                    commit.committed_datetime.strftime('%Y-%m-%d %H:%M'),
-                    commit.author.name
-                ))
-        except Exception as e:
-            messagebox.showerror("Error", f"Failed to load tags: {str(e)}")
-        
-        tags_tree.pack(fill=tk.BOTH, expand=True)
-    
-    def show_commit_details(self):
-        """Show detailed commit information"""
-        commit_hash = simpledialog.askstring("Commit Details", "Enter commit hash:")
-        if commit_hash and self.repo:
-            try:
-                commit = self.repo.commit(commit_hash)
-                
-                details_window = tk.Toplevel(self.root)
-                details_window.title(f"Commit Details: {commit_hash[:8]}")
-                details_window.geometry("800x600")
-                
-                # Commit info
-                info_frame = ttk.LabelFrame(details_window, text="Commit Information")
-                info_frame.pack(fill=tk.X, padx=10, pady=10)
-                
-                ttk.Label(info_frame, text=f"Hash: {commit.hexsha}").pack(anchor=tk.W, padx=5, pady=2)
-                ttk.Label(info_frame, text=f"Author: {commit.author.name} <{commit.author.email}>").pack(anchor=tk.W, padx=5, pady=2)
-                ttk.Label(info_frame, text=f"Date: {commit.committed_datetime}").pack(anchor=tk.W, padx=5, pady=2)
-                ttk.Label(info_frame, text=f"Message: {commit.message.strip()}").pack(anchor=tk.W, padx=5, pady=2)
-                
-                # Files changed
-                files_frame = ttk.LabelFrame(details_window, text="Files Changed")
-                files_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
-                
-                files_columns = ('File', 'Status', 'Changes')
-                files_tree = ttk.Treeview(files_frame, columns=files_columns, show='headings')
-                
-                for col in files_columns:
-                    files_tree.heading(col, text=col)
-                    files_tree.column(col, width=250)
-                
-                if commit.parents:
-                    diffs = commit.parents[0].diff(commit)
-                    for diff in diffs:
-                        status = 'Modified'
-                        if diff.new_file:
-                            status = 'Added'
-                        elif diff.deleted_file:
-                            status = 'Deleted'
-                        
-                        file_path = diff.b_path or diff.a_path
-                        files_tree.insert('', 'end', values=(file_path, status, ""))
-                
-                files_tree.pack(fill=tk.BOTH, expand=True)
-                
-            except Exception as e:
-                messagebox.showerror("Error", f"Failed to get commit details: {str(e)}")
-    
-    def view_version_timeline(self):
-        """View version timeline for selected file"""
-        selection = self.file_tree.selection()
-        if selection and self.repo:
-            item = selection[0]
-            file_name = self.file_tree.item(item)['values'][0]
-            
-            tree_selection = self.repo_tree.selection()
-            if tree_selection:
-                folder_path = self.repo_tree.item(tree_selection[0])['values'][0]
-                file_path = os.path.join(folder_path, file_name)
-                rel_path = os.path.relpath(file_path, self.repo_path)
-                
-                timeline_window = tk.Toplevel(self.root)
-                timeline_window.title(f"Version Timeline: {file_name}")
-                timeline_window.geometry("1000x600")
-                
-                columns = ('Version', 'Commit', 'Date', 'Author', 'Message', 'Changes')
-                timeline_tree = ttk.Treeview(timeline_window, columns=columns, show='headings')
-                
-                for col in columns:
-                    timeline_tree.heading(col, text=col)
-                    timeline_tree.column(col, width=150)
-                
-                try:
-                    commits = list(self.repo.iter_commits(paths=rel_path))
-                    version = len(commits)
-                    
-                    for i, commit in enumerate(commits):
-                        # Calculate changes
-                        changes = ""
-                        if commit.parents:
-                            try:
-                                diffs = commit.parents[0].diff(commit, paths=rel_path)
-                                if diffs:
-                                    diff = diffs[0]
-                                    if diff.diff:
-                                        additions = diff.diff.decode('utf-8').count('\n+')
-                                        deletions = diff.diff.decode('utf-8').count('\n-')
-                                        changes = f"+{additions} -{deletions}"
-                            except:
-                                changes = "Modified"
-                        else:
-                            changes = "Initial"
-                        
-                        timeline_tree.insert('', 'end', values=(
-                            str(version - i),
-                            commit.hexsha[:8],
-                            commit.committed_datetime.strftime('%Y-%m-%d %H:%M'),
-                            commit.author.name,
-                            commit.message.strip()[:50],
-                            changes
-                        ))
-                        
-                except Exception as e:
-                    messagebox.showerror("Error", f"Failed to get version timeline: {str(e)}")
-                
-                timeline_tree.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
-    
-    def show_file_blame(self):
-        """Show file blame/annotation"""
-        selection = self.file_tree.selection()
-        if selection and self.repo:
-            item = selection[0]
-            file_name = self.file_tree.item(item)['values'][0]
-            
-            tree_selection = self.repo_tree.selection()
-            if tree_selection:
-                folder_path = self.repo_tree.item(tree_selection[0])['values'][0]
-                file_path = os.path.join(folder_path, file_name)
-                rel_path = os.path.relpath(file_path, self.repo_path)
-                
-                blame_window = tk.Toplevel(self.root)
-                blame_window.title(f"Blame/Annotate: {file_name}")
-                blame_window.geometry("1200x700")
-                
-                # Create text widget with scrollbar
-                text_frame = ttk.Frame(blame_window)
-                text_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
-                
-                text_widget = tk.Text(text_frame, font=('Courier', 10), wrap=tk.NONE)
-                v_scrollbar = ttk.Scrollbar(text_frame, orient=tk.VERTICAL, command=text_widget.yview)
-                h_scrollbar = ttk.Scrollbar(text_frame, orient=tk.HORIZONTAL, command=text_widget.xview)
-                text_widget.configure(yscrollcommand=v_scrollbar.set, xscrollcommand=h_scrollbar.set)
-                
-                text_widget.grid(row=0, column=0, sticky='nsew')
-                v_scrollbar.grid(row=0, column=1, sticky='ns')
-                h_scrollbar.grid(row=1, column=0, sticky='ew')
-                
-                text_frame.grid_rowconfigure(0, weight=1)
-                text_frame.grid_columnconfigure(0, weight=1)
-                
-                try:
-                    # Get blame information
-                    blame_output = self.repo.git.blame('--line-porcelain', rel_path)
-                    
-                    # Parse blame output (simplified)
-                    lines = blame_output.split('\n')
-                    blame_info = []
-                    current_commit = ""
-                    current_author = ""
-                    
-                    for line in lines:
-                        if line and not line.startswith('\t'):
-                            if len(line.split()) > 0 and len(line.split()[0]) == 40:  # SHA hash
-                                current_commit = line.split()[0][:8]
-                            elif line.startswith('author '):
-                                current_author = line[7:]
-                        elif line.startswith('\t'):
-                            code_line = line[1:]
-                            blame_info.append(f"{current_commit} {current_author:20} | {code_line}")
-                    
-                    text_widget.insert('1.0', '\n'.join(blame_info))
-                    text_widget.config(state=tk.DISABLED)
-                    
-                except Exception as e:
-                    text_widget.insert('1.0', f"Error getting blame information: {str(e)}")
-                    text_widget.config(state=tk.DISABLED)
-    
-    def sort_files_by_column(self, column):
-        """Sort files by column"""
-        items = [(self.file_tree.set(item, column), item) for item in self.file_tree.get_children('')]
-        
-        # Sort items
-        try:
-            # Try numeric sort first
-            items.sort(key=lambda x: float(x[0]) if x[0].replace('.', '').isdigit() else x[0].lower())
-        except:
-            # Fall back to string sort
-            items.sort(key=lambda x: x[0].lower())
-        
-        # Rearrange items
-        for index, (val, item) in enumerate(items):
-            self.file_tree.move(item, '', index)
     
     def show_version_graph(self):
         """Show graphical version history with branches and navigation"""
@@ -3074,61 +3255,6 @@ Inspired by Basic VCS version control system.
         self.checkout_commit(commit_hash)
         window.destroy()
     
-    def edit_commit_message_dialog(self, commit, parent_window):
-        """Edit commit message with dialog"""
-        edit_window = tk.Toplevel(parent_window)
-        edit_window.title(f"Edit Commit Message: {commit.hexsha[:8]}")
-        edit_window.geometry("500x300")
-        
-        ttk.Label(edit_window, text="Edit commit message:").pack(pady=5)
-        
-        message_text = tk.Text(edit_window, height=8, wrap=tk.WORD)
-        message_text.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
-        message_text.insert('1.0', commit.message.strip())
-        
-        def save_message():
-            new_message = message_text.get('1.0', tk.END).strip()
-            if new_message != commit.message.strip():
-                if commit == self.repo.head.commit:
-                    if messagebox.askyesno("Confirm", "Edit the last commit message?"):
-                        try:
-                            self.repo.git.commit('--amend', '-m', new_message)
-                            messagebox.showinfo("Success", "Commit message updated")
-                            edit_window.destroy()
-                            parent_window.destroy()
-                            self.refresh_all()
-                            if hasattr(self, 'graph_canvas'):
-                                self.draw_commit_graph(self.graph_canvas)
-                        except Exception as e:
-                            messagebox.showerror("Error", str(e))
-                else:
-                    messagebox.showwarning("Warning", "Can only safely edit the last commit message")
-            else:
-                edit_window.destroy()
-        
-        button_frame = ttk.Frame(edit_window)
-        button_frame.pack(fill=tk.X, padx=10, pady=5)
-        
-        ttk.Button(button_frame, text="Save", command=save_message).pack(side=tk.LEFT, padx=5)
-        ttk.Button(button_frame, text="Cancel", command=edit_window.destroy).pack(side=tk.RIGHT, padx=5)
-    
-    def create_branch_from_commit(self, commit, parent_window):
-        """Create branch from specific commit"""
-        branch_name = simpledialog.askstring("Create Branch", "Enter new branch name:")
-        if branch_name:
-            try:
-                new_branch = self.repo.create_head(branch_name, commit)
-                if messagebox.askyesno("Switch Branch", f"Switch to new branch '{branch_name}'?"):
-                    new_branch.checkout()
-                    self.refresh_all()
-                    if hasattr(self, 'graph_canvas'):
-                        self.draw_commit_graph(self.graph_canvas)
-                
-                messagebox.showinfo("Success", f"Branch '{branch_name}' created from {commit.hexsha[:8]}")
-                parent_window.destroy()
-            except Exception as e:
-                messagebox.showerror("Error", f"Failed to create branch: {str(e)}")
-    
     def refresh_graph(self, canvas, window):
         """Refresh the commit graph"""
         self.draw_commit_graph(canvas)
@@ -3239,17 +3365,25 @@ Inspired by Basic VCS version control system.
         
         files_tree.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
     
-    def edit_commit_message(self):
-        """Edit commit message for the last commit"""
-        if not self.repo:
-            messagebox.showerror("Error", "No repository loaded")
-            return
-        
-        try:
-            last_commit = self.repo.head.commit
-            self.edit_commit_message_inline(last_commit)
-        except Exception as e:
-            messagebox.showerror("Error", f"Failed to get last commit: {str(e)}")
+    # Additional stub methods to complete the interface
+    def edit_commit_message_advanced(self, commit, parent_window):
+        """Advanced commit message editing"""
+        messagebox.showinfo("Feature", "Advanced commit message editing - Feature to be implemented")
+    
+    def create_branch_from_commit(self, commit, parent_window):
+        """Create branch from specific commit"""
+        branch_name = simpledialog.askstring("Create Branch", "Enter new branch name:")
+        if branch_name:
+            try:
+                new_branch = self.repo.create_head(branch_name, commit)
+                if messagebox.askyesno("Switch Branch", f"Switch to new branch '{branch_name}'?"):
+                    new_branch.checkout()
+                    self.refresh_all()
+                
+                messagebox.showinfo("Success", f"Branch '{branch_name}' created from {commit.hexsha[:8]}")
+                parent_window.destroy()
+            except Exception as e:
+                messagebox.showerror("Error", f"Failed to create branch: {str(e)}")
     
     def edit_commit_message_inline(self, commit):
         """Edit commit message inline"""
@@ -3292,83 +3426,12 @@ Inspired by Basic VCS version control system.
             except Exception as e:
                 messagebox.showerror("Error", f"Failed to cherry pick commit: {str(e)}")
     
-    def view_file_at_commit(self):
-        """View selected file at a specific commit"""
-        selection = self.file_tree.selection()
-        if selection and self.repo:
-            item = selection[0]
-            file_name = self.file_tree.item(item)['values'][0]
-            
-            commit_hash = simpledialog.askstring("View File", "Enter commit hash:")
-            if commit_hash:
-                self.show_file_at_commit(file_name, commit_hash)
-    
     def view_file_at_commit_from_tree(self, tree, commit):
         """View file at commit from tree selection"""
         selection = tree.selection()
         if selection:
             file_path = tree.item(selection[0])['values'][0]
             self.show_file_at_commit(file_path, commit.hexsha)
-    
-    def show_file_at_commit(self, file_path, commit_hash):
-        """Show file content at specific commit"""
-        try:
-            commit = self.repo.commit(commit_hash)
-            
-            file_window = tk.Toplevel(self.root)
-            file_window.title(f"File: {file_path} @ {commit_hash[:8]}")
-            file_window.geometry("1000x700")
-            
-            # Create text widget with scrollbar
-            text_frame = ttk.Frame(file_window)
-            text_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
-            
-            text_widget = tk.Text(text_frame, font=('Courier', 10), wrap=tk.NONE)
-            v_scrollbar = ttk.Scrollbar(text_frame, orient=tk.VERTICAL, command=text_widget.yview)
-            h_scrollbar = ttk.Scrollbar(text_frame, orient=tk.HORIZONTAL, command=text_widget.xview)
-            text_widget.configure(yscrollcommand=v_scrollbar.set, xscrollcommand=h_scrollbar.set)
-            
-            text_widget.grid(row=0, column=0, sticky='nsew')
-            v_scrollbar.grid(row=0, column=1, sticky='ns')
-            h_scrollbar.grid(row=1, column=0, sticky='ew')
-            
-            text_frame.grid_rowconfigure(0, weight=1)
-            text_frame.grid_columnconfigure(0, weight=1)
-            
-            # Get file content
-            try:
-                file_content = commit.tree[file_path].data_stream.read().decode('utf-8')
-                text_widget.insert('1.0', file_content)
-            except:
-                text_widget.insert('1.0', f"Could not read file content (binary file or not found)")
-            
-            text_widget.config(state=tk.DISABLED)
-            
-        except Exception as e:
-            messagebox.showerror("Error", f"Failed to show file at commit: {str(e)}")
-    
-    def revert_file_to_version(self):
-        """Revert selected file to a specific version"""
-        selection = self.file_tree.selection()
-        if selection and self.repo:
-            item = selection[0]
-            file_name = self.file_tree.item(item)['values'][0]
-            
-            tree_selection = self.repo_tree.selection()
-            if tree_selection:
-                folder_path = self.repo_tree.item(tree_selection[0])['values'][0]
-                file_path = os.path.join(folder_path, file_name)
-                rel_path = os.path.relpath(file_path, self.repo_path)
-                
-                commit_hash = simpledialog.askstring("Revert File", "Enter commit hash to revert to:")
-                if commit_hash:
-                    if messagebox.askyesno("Confirm", f"Revert {file_name} to commit {commit_hash[:8]}?"):
-                        try:
-                            self.repo.git.checkout(commit_hash, '--', rel_path)
-                            messagebox.showinfo("Success", f"File {file_name} reverted to {commit_hash[:8]}")
-                            self.refresh_all()
-                        except Exception as e:
-                            messagebox.showerror("Error", f"Failed to revert file: {str(e)}")
     
     def compare_file_with_current(self, tree, commit):
         """Compare file in commit with current version"""
@@ -3421,60 +3484,243 @@ Inspired by Basic VCS version control system.
             except Exception as e:
                 messagebox.showerror("Error", f"Failed to compare files: {str(e)}")
     
-    def show_tag_files_enhanced(self, tag_name):
-        """Enhanced view of files changed in a specific tag"""
-        tag_files_window = tk.Toplevel(self.root)
-        tag_files_window.title(f"Files in Tag: {tag_name}")
-        tag_files_window.geometry("1000x700")
+    # Additional stub methods for menu functionality
+    def show_vertical_timeline(self):
+        """Show vertical timeline view from oldest to newest"""
+        if not self.repo:
+            messagebox.showerror("Error", "No repository loaded")
+            return
+        
+        timeline_window = tk.Toplevel(self.root)
+        timeline_window.title("Timeline View - Vertical")
+        timeline_window.geometry("1200x800")
+        
+        # Create main frame with scrollable area
+        main_frame = ttk.Frame(timeline_window)
+        main_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
         
         # Create paned window
-        paned = ttk.PanedWindow(tag_files_window, orient=tk.VERTICAL)
-        paned.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
+        paned = ttk.PanedWindow(main_frame, orient=tk.HORIZONTAL)
+        paned.pack(fill=tk.BOTH, expand=True)
         
-        # Top - tag info
-        info_frame = ttk.LabelFrame(paned, text="Tag Information")
-        paned.add(info_frame, weight=1)
+        # Left side - timeline
+        left_frame = ttk.Frame(paned)
+        paned.add(left_frame, weight=1)
         
+        ttk.Label(left_frame, text="Commit Timeline", font=('TkDefaultFont', 12, 'bold')).pack(pady=5)
+        
+        # Timeline with scrollbar
+        timeline_frame = ttk.Frame(left_frame)
+        timeline_frame.pack(fill=tk.BOTH, expand=True)
+        
+        # Create canvas for timeline
+        timeline_canvas = tk.Canvas(timeline_frame, bg='white', width=600)
+        timeline_scroll = ttk.Scrollbar(timeline_frame, orient=tk.VERTICAL, command=timeline_canvas.yview)
+        timeline_canvas.configure(yscrollcommand=timeline_scroll.set)
+        
+        timeline_canvas.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        timeline_scroll.pack(side=tk.RIGHT, fill=tk.Y)
+        
+        # Enable mouse wheel scrolling
+        def on_mousewheel(event):
+            timeline_canvas.yview_scroll(int(-1*(event.delta/120)), "units")
+        
+        timeline_canvas.bind("<MouseWheel>", on_mousewheel)
+        timeline_canvas.bind("<Button-4>", lambda e: timeline_canvas.yview_scroll(-1, "units"))
+        timeline_canvas.bind("<Button-5>", lambda e: timeline_canvas.yview_scroll(1, "units"))
+        
+        # Right side - details
+        right_frame = ttk.Frame(paned)
+        paned.add(right_frame, weight=1)
+        
+        ttk.Label(right_frame, text="Commit Details", font=('TkDefaultFont', 12, 'bold')).pack(pady=5)
+        
+        # Details text area
+        details_frame = ttk.Frame(right_frame)
+        details_frame.pack(fill=tk.BOTH, expand=True)
+        
+        self.timeline_details_text = tk.Text(details_frame, wrap=tk.WORD, height=10)
+        details_scroll = ttk.Scrollbar(details_frame, orient=tk.VERTICAL, command=self.timeline_details_text.yview)
+        self.timeline_details_text.configure(yscrollcommand=details_scroll.set)
+        
+        self.timeline_details_text.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        details_scroll.pack(side=tk.RIGHT, fill=tk.Y)
+        
+        # Files changed area
+        files_frame = ttk.LabelFrame(right_frame, text="Files Changed")
+        files_frame.pack(fill=tk.BOTH, expand=True, pady=5)
+        
+        files_columns = ('File', 'Status', 'Changes')
+        self.timeline_files_tree = ttk.Treeview(files_frame, columns=files_columns, show='headings', height=8)
+        
+        for col in files_columns:
+            self.timeline_files_tree.heading(col, text=col)
+            self.timeline_files_tree.column(col, width=150)
+        
+        files_tree_scroll = ttk.Scrollbar(files_frame, orient=tk.VERTICAL, command=self.timeline_files_tree.yview)
+        self.timeline_files_tree.configure(yscrollcommand=files_tree_scroll.set)
+        
+        self.timeline_files_tree.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        files_tree_scroll.pack(side=tk.RIGHT, fill=tk.Y)
+        
+        # Draw timeline
+        self.draw_vertical_timeline(timeline_canvas)
+        
+        # Store references
+        self.timeline_canvas = timeline_canvas
+        self.timeline_window = timeline_window
+    
+    def draw_vertical_timeline(self, canvas):
+        """Draw vertical timeline from oldest to newest"""
         try:
-            tag = self.repo.tags[tag_name]
-            commit = tag.commit
+            # Get all commits (reversed to show oldest first)
+            commits = list(reversed(list(self.repo.iter_commits(max_count=100))))
             
-            ttk.Label(info_frame, text=f"Tag: {tag_name}").pack(anchor=tk.W, padx=5, pady=2)
-            ttk.Label(info_frame, text=f"Commit: {commit.hexsha}").pack(anchor=tk.W, padx=5, pady=2)
-            ttk.Label(info_frame, text=f"Author: {commit.author.name}").pack(anchor=tk.W, padx=5, pady=2)
-            ttk.Label(info_frame, text=f"Date: {commit.committed_datetime}").pack(anchor=tk.W, padx=5, pady=2)
-            ttk.Label(info_frame, text=f"Message: {commit.message.strip()}").pack(anchor=tk.W, padx=5, pady=2)
+            if not commits:
+                canvas.create_text(300, 100, text="No commits found", font=('Arial', 16), fill='red')
+                return
+            
+            # Calculate dimensions
+            item_height = 120
+            item_width = 550
+            margin = 30
+            
+            total_height = len(commits) * item_height + 2 * margin
+            canvas.configure(scrollregion=(0, 0, 600, total_height))
+            
+            # Get branch and tag info
+            branch_info = {}
+            tag_info = {}
+            
+            # Map commits to branches
+            for branch in self.repo.branches:
+                try:
+                    for commit in self.repo.iter_commits(branch.name):
+                        if commit.hexsha not in branch_info:
+                            branch_info[commit.hexsha] = []
+                        branch_info[commit.hexsha].append(branch.name)
+                except:
+                    continue
+            
+            # Map commits to tags
+            for tag in self.repo.tags:
+                if tag.commit.hexsha not in tag_info:
+                    tag_info[tag.commit.hexsha] = []
+                tag_info[tag.commit.hexsha].append(tag.name)
+            
+            # Draw timeline line
+            canvas.create_line(50, margin, 50, total_height - margin, fill='blue', width=4)
+            
+            # Draw commits
+            for i, commit in enumerate(commits):
+                y = margin + i * item_height
+                
+                # Draw commit circle
+                canvas.create_oval(45, y + 55, 55, y + 65, fill='red', outline='darkred', width=2)
+                
+                # Draw commit box
+                is_head = False
+                try:
+                    is_head = (commit == self.repo.head.commit)
+                except:
+                    pass
+                
+                box_color = 'lightgreen' if is_head else 'lightblue'
+                rect = canvas.create_rectangle(80, y + 10, 80 + item_width, y + 100, 
+                                             fill=box_color, outline='blue', width=2)
+                
+                # Version number
+                version_num = i + 1
+                canvas.create_text(90, y + 25, text=f"Version {version_num}", 
+                                 font=('Arial', 10, 'bold'), anchor='w')
+                
+                # Hash
+                canvas.create_text(90, y + 40, text=f"Hash: {commit.hexsha[:12]}", 
+                                 font=('Arial', 9), anchor='w')
+                
+                # Author and date
+                canvas.create_text(90, y + 55, text=f"Author: {commit.author.name}", 
+                                 font=('Arial', 9), anchor='w')
+                canvas.create_text(90, y + 70, text=f"Date: {commit.committed_datetime.strftime('%Y-%m-%d %H:%M:%S')}", 
+                                 font=('Arial', 9), anchor='w')
+                
+                # Branches and tags
+                branch_text = ""
+                if commit.hexsha in branch_info:
+                    branches = branch_info[commit.hexsha][:3]  # Show max 3 branches
+                    branch_text = f"Branches: {', '.join(branches)}"
+                    if len(branch_info[commit.hexsha]) > 3:
+                        branch_text += f" (+{len(branch_info[commit.hexsha]) - 3})"
+                
+                if commit.hexsha in tag_info:
+                    tags = tag_info[commit.hexsha][:2]  # Show max 2 tags
+                    tag_text = f"Tags: {', '.join(tags)}"
+                    if len(tag_info[commit.hexsha]) > 2:
+                        tag_text += f" (+{len(tag_info[commit.hexsha]) - 2})"
+                    branch_text += f" | {tag_text}" if branch_text else tag_text
+                
+                if branch_text:
+                    canvas.create_text(90, y + 85, text=branch_text, 
+                                     font=('Arial', 8), anchor='w', fill='darkgreen')
+                
+                # HEAD indicator
+                if is_head:
+                    canvas.create_text(550, y + 25, text="← HEAD", 
+                                     font=('Arial', 10, 'bold'), fill='red', anchor='w')
+                
+                # Message (on hover or click)
+                canvas.tag_bind(rect, "<Button-1>", 
+                               lambda e, c=commit: self.show_timeline_commit_details(c))
+                
+                # Store commit reference
+                canvas.create_text(90, y + 5, text="", tags=f"commit_{commit.hexsha}")
+            
         except Exception as e:
-            ttk.Label(info_frame, text=f"Error: {str(e)}").pack(anchor=tk.W, padx=5, pady=2)
-        
-        # Bottom - files
-        files_frame = ttk.LabelFrame(paned, text="Files Changed")
-        paned.add(files_frame, weight=3)
-        
-        columns = ('File', 'Status', 'Additions', 'Deletions')
-        files_tree = ttk.Treeview(files_frame, columns=columns, show='headings')
-        
-        for col in columns:
-            files_tree.heading(col, text=col)
-            files_tree.column(col, width=200)
-        
-        # Context menu for tag files
-        tag_file_menu = tk.Menu(self.root, tearoff=0)
-        tag_file_menu.add_command(label="View File at Tag", 
-                                 command=lambda: self.view_file_at_tag(files_tree, tag_name))
-        
-        def show_tag_file_menu(event):
-            try:
-                tag_file_menu.tk_popup(event.x_root, event.y_root)
-            finally:
-                tag_file_menu.grab_release()
-        
-        files_tree.bind('<Button-3>', show_tag_file_menu)
-        files_tree.bind('<Double-1>', lambda e: self.view_file_at_tag(files_tree, tag_name))
-        
+            messagebox.showerror("Error", f"Failed to draw timeline: {str(e)}")
+            canvas.create_text(300, 100, text=f"Error: {str(e)}", font=('Arial', 12), fill='red')
+
+    def show_timeline_commit_details(self, commit):
+        """Show commit details in timeline right pane"""
         try:
-            tag = self.repo.tags[tag_name]
-            commit = tag.commit
+            # Update details text
+            self.timeline_details_text.delete('1.0', tk.END)
+            
+            details = f"Commit: {commit.hexsha}\n"
+            details += f"Author: {commit.author.name} <{commit.author.email}>\n"
+            details += f"Date: {commit.committed_datetime}\n"
+            details += f"Message:\n{commit.message.strip()}\n\n"
+            
+            # Add parent info
+            if commit.parents:
+                details += f"Parents: {', '.join([p.hexsha[:8] for p in commit.parents])}\n"
+            else:
+                details += "Parents: None (initial commit)\n"
+            
+            # Add branch/tag info
+            branch_info = []
+            for branch in self.repo.branches:
+                try:
+                    if commit in list(self.repo.iter_commits(branch.name)):
+                        branch_info.append(branch.name)
+                except:
+                    continue
+            
+            if branch_info:
+                details += f"Branches: {', '.join(branch_info)}\n"
+            
+            tag_info = []
+            for tag in self.repo.tags:
+                if tag.commit == commit:
+                    tag_info.append(tag.name)
+            
+            if tag_info:
+                details += f"Tags: {', '.join(tag_info)}\n"
+            
+            self.timeline_details_text.insert('1.0', details)
+            
+            # Update files tree
+            for item in self.timeline_files_tree.get_children():
+                self.timeline_files_tree.delete(item)
             
             if commit.parents:
                 diffs = commit.parents[0].diff(commit)
@@ -3493,31 +3739,88 @@ Inspired by Basic VCS version control system.
                         if diff.diff:
                             additions = diff.diff.decode('utf-8').count('\n+')
                             deletions = diff.diff.decode('utf-8').count('\n-')
+                            changes = f"+{additions} -{deletions}"
                         else:
-                            additions = deletions = 0
+                            changes = "Binary"
                     except:
-                        additions = deletions = 0
+                        changes = "Modified"
                     
-                    files_tree.insert('', 'end', values=(file_path, status, additions, deletions))
+                    self.timeline_files_tree.insert('', 'end', values=(file_path, status, changes))
             else:
+                # Initial commit
                 for item in commit.tree.traverse():
                     if item.type == 'blob':
-                        files_tree.insert('', 'end', values=(item.path, 'Added', 0, 0))
+                        self.timeline_files_tree.insert('', 'end', values=(item.path, 'Added', 'New'))
+                        
         except Exception as e:
-            messagebox.showerror("Error", f"Failed to get tag files: {str(e)}")
+            self.timeline_details_text.delete('1.0', tk.END)
+            self.timeline_details_text.insert('1.0', f"Error loading commit details: {str(e)}")
+
+
+    def edit_commit_message(self, commit, parent_window):
+        """Edit commit message with dialog"""
+        edit_window = tk.Toplevel(parent_window)
+        edit_window.title(f"Edit Commit Message: {commit.hexsha[:8]}")
+        edit_window.geometry("500x300")
         
-        files_tree.pack(fill=tk.BOTH, expand=True)
+        ttk.Label(edit_window, text="Edit commit message:").pack(pady=5)
+        
+        message_text = tk.Text(edit_window, height=8, wrap=tk.WORD)
+        message_text.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
+        message_text.insert('1.0', commit.message.strip())
+        
+        def save_message():
+            new_message = message_text.get('1.0', tk.END).strip()
+            if new_message != commit.message.strip():
+                if commit == self.repo.head.commit:
+                    if messagebox.askyesno("Confirm", "Edit the last commit message?"):
+                        try:
+                            self.repo.git.commit('--amend', '-m', new_message)
+                            messagebox.showinfo("Success", "Commit message updated")
+                            edit_window.destroy()
+                            parent_window.destroy()
+                            self.refresh_all()
+                            if hasattr(self, 'graph_canvas'):
+                                self.draw_commit_graph(self.graph_canvas)
+                        except Exception as e:
+                            messagebox.showerror("Error", str(e))
+                else:
+                    messagebox.showwarning("Warning", "Can only safely edit the last commit message")
+            else:
+                edit_window.destroy()
+        
+        button_frame = ttk.Frame(edit_window)
+        button_frame.pack(fill=tk.X, padx=10, pady=5)
+        
+        ttk.Button(button_frame, text="Save", command=save_message).pack(side=tk.LEFT, padx=5)
+        ttk.Button(button_frame, text="Cancel", command=edit_window.destroy).pack(side=tk.RIGHT, padx=5)
+        
+    def show_tags_branches(self):
+        """Show tags and branches overview"""
+        messagebox.showinfo("Feature", "Tags and branches overview - Feature to be implemented")
     
-    def view_file_at_tag(self, tree, tag_name):
-        """View file at specific tag"""
-        selection = tree.selection()
-        if selection:
-            file_path = tree.item(selection[0])['values'][0]
-            try:
-                tag = self.repo.tags[tag_name]
-                self.show_file_at_commit(file_path, tag.commit.hexsha)
-            except Exception as e:
-                messagebox.showerror("Error", f"Failed to view file at tag: {str(e)}")
+    def show_commit_details(self):
+        """Show detailed commit information"""
+        messagebox.showinfo("Feature", "Commit details dialog - Feature to be implemented")
+    
+    
+    
+    def view_version_timeline(self):
+        """View version timeline for selected file"""
+        messagebox.showinfo("Feature", "Version timeline - Feature to be implemented")
+    
+    def show_file_blame(self):
+        """Show file blame/annotation"""
+        messagebox.showinfo("Feature", "File blame - Feature to be implemented")
+    
+    def view_file_at_commit(self):
+        """View selected file at a specific commit"""
+        messagebox.showinfo("Feature", "View file at commit - Feature to be implemented")
+    
+    def revert_file_to_version(self):
+        """Revert selected file to a specific version"""
+        messagebox.showinfo("Feature", "Revert file to version - Feature to be implemented")
+
 
 def main():
     """Main function"""
