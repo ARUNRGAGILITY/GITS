@@ -18,6 +18,8 @@ import tempfile
 import threading
 import platform
 import shutil
+
+
 class GitPythonGUI:
     def __init__(self, root, repo_path=None):
         self.root = root
@@ -39,12 +41,13 @@ class GitPythonGUI:
         # Create UI components
         self.setup_custom_styles()
         self.create_menu_bar()
-        self.create_toolbar()
+        self.create_enhanced_toolbar()
         self.create_main_layout()
         self.create_status_bar()
         
         # Load initial data
         self.refresh_all()
+        self.setup_enhanced_refresh_cycle()
         
         # Auto-clear highlights after 5 seconds
         self.schedule_highlight_clear()
@@ -73,6 +76,7 @@ class GitPythonGUI:
                        background='#ffc107',  # Bootstrap warning yellow
                        foreground='#212529',  # Dark text
                        font=('TkDefaultFont', 10, 'bold'))
+        
     
     def get_file_icon(self, file_path, file_status='CLEAN'):
         """Get appropriate icon for file type and status"""
@@ -1298,7 +1302,7 @@ class GitPythonGUI:
             self.repo_tree.delete(item)
         
         # Update file status cache
-        self.update_file_status_cache()
+        self.update_file_status_cache_enhanced()
         
         # Add repository root
         repo_name = os.path.basename(self.repo_path)
@@ -1390,7 +1394,7 @@ class GitPythonGUI:
             values = self.repo_tree.item(item)['values']
             if values:  # Make sure values exist
                 path = values[0]
-                self.populate_file_list(path)
+                self.populate_file_list_enhanced(path)
             else:
                 # If no values, try to reconstruct path
                 self.refresh_all()
@@ -2520,7 +2524,7 @@ Inspired by Simple VCS version control system.
         
         tag_window = tk.Toplevel(self.root)
         tag_window.title("Create Tag")
-        tag_window.geometry("500x350")
+        tag_window.geometry("800x450")
         tag_window.resizable(False, False)
         
         # Center the window
@@ -3702,7 +3706,7 @@ Inspired by Simple VCS version control system.
                         self.root.after(0, lambda: show_success("HEAD commit message updated successfully!"))
                     else:
                         # Interactive rebase for older commits
-                        self.edit_commit_message_safe(selected_commit, new_message)
+                        self.edit_commit_message_python_only(selected_commit, new_message)
                     
                 except Exception as e:
                     self.root.after(0, lambda: show_error(f"Failed to edit commit message: {str(e)}"))
@@ -5945,6 +5949,763 @@ fi
 ##
 
 
+###
+    
+    def populate_file_list_enhanced(self, folder_path):
+        """Enhanced file list with better row highlighting"""
+        # Clear existing items
+        for item in self.file_tree.get_children():
+            self.file_tree.delete(item)
+        
+        if not os.path.exists(folder_path):
+            return
+        
+        try:
+            for item in sorted(os.listdir(folder_path)):
+                if item.startswith('.'):
+                    continue
+                
+                item_path = os.path.join(folder_path, item)
+                
+                # Get file status
+                file_status = self.file_status_cache.get(item_path, 'CLEAN')
+                
+                # Get file info
+                if os.path.isfile(item_path):
+                    size = os.path.getsize(item_path)
+                    size_str = self.format_file_size(size)
+                    modified = datetime.fromtimestamp(os.path.getmtime(item_path)).strftime('%Y-%m-%d %H:%M')
+                    
+                    # Get Git info
+                    branch_info, commit_info, version_info, author_info, commit_date = self.get_git_file_info(item_path)
+                    
+                    # Choose icon based on file type and status
+                    icon = self.get_file_icon(item_path, file_status)
+                    
+                    # Enhanced row highlighting based on file status
+                    if file_status == 'NEW':
+                        tags = ('new_file',)
+                        self.highlighted_files.add(item_path)
+                    elif file_status == 'MODIFIED':
+                        tags = ('modified_file',)
+                        self.highlighted_files.add(item_path)
+                    elif file_status == 'STAGED':
+                        tags = ('staged_file',)
+                        self.highlighted_files.add(item_path)
+                    elif file_status == 'MODIFIED_STAGED':
+                        tags = ('modified_staged_file',)
+                        self.highlighted_files.add(item_path)
+                    elif file_status == 'DELETED':
+                        tags = ('deleted_file',)
+                        self.highlighted_files.add(item_path)
+                    elif file_status == 'RENAMED':
+                        tags = ('renamed_file',)
+                        self.highlighted_files.add(item_path)
+                    elif file_status == 'COPIED':
+                        tags = ('copied_file',)
+                        self.highlighted_files.add(item_path)
+                    elif file_status == 'CONFLICTED':
+                        tags = ('conflicted_file',)
+                        self.highlighted_files.add(item_path)
+                    else:
+                        tags = ('clean_file',)
+                    
+                    file_item = self.file_tree.insert('', 'end', text=icon, 
+                                        values=(item, 'File', size_str, modified, branch_info, version_info, author_info, commit_info, commit_date),
+                                        tags=tags)
+                    
+                elif os.path.isdir(item_path):
+                    folder_icon = self.get_folder_status(item_path)
+                    folder_status = self.get_folder_git_status(item_path)
+                    
+                    if folder_status == 'MODIFIED':
+                        tags = ('modified_folder',)
+                    elif folder_status == 'NEW':
+                        tags = ('new_folder',)
+                    elif folder_status == 'STAGED':
+                        tags = ('staged_folder',)
+                    else:
+                        tags = ('clean_folder',)
+                    
+                    self.file_tree.insert('', 'end', text=folder_icon, 
+                                        values=(item, 'Folder', '', '', '', '', '', '', ''),
+                                        tags=tags)
+            
+            # Configure enhanced tag colors with better contrast
+            self.configure_file_tree_colors()
+            
+        except PermissionError:
+            self.status_label.config(text="Permission denied accessing folder")
+
+
+    def configure_file_tree_colors(self):
+        """Configure enhanced color scheme for file tree"""
+        # File status colors with better visibility
+        self.file_tree.tag_configure('new_file', 
+                                    background='#ffebee', foreground='#c62828',
+                                    font=('TkDefaultFont', 9, 'bold'))  # Light red with dark red text
+        
+        self.file_tree.tag_configure('modified_file', 
+                                    background='#fff8e1', foreground='#f57f17',
+                                    font=('TkDefaultFont', 9, 'bold'))  # Light amber with dark amber text
+        
+        self.file_tree.tag_configure('staged_file', 
+                                    background='#e8f5e8', foreground='#2e7d32',
+                                    font=('TkDefaultFont', 9, 'bold'))  # Light green with dark green text
+        
+        self.file_tree.tag_configure('modified_staged_file', 
+                                    background='#e3f2fd', foreground='#1565c0',
+                                    font=('TkDefaultFont', 9, 'bold'))  # Light blue with dark blue text
+        
+        self.file_tree.tag_configure('deleted_file', 
+                                    background='#fce4ec', foreground='#ad1457',
+                                    font=('TkDefaultFont', 9, 'italic'))  # Light pink with dark pink text
+        
+        self.file_tree.tag_configure('renamed_file', 
+                                    background='#f3e5f5', foreground='#7b1fa2',
+                                    font=('TkDefaultFont', 9))  # Light purple with dark purple text
+        
+        self.file_tree.tag_configure('copied_file', 
+                                    background='#e0f2f1', foreground='#00695c',
+                                    font=('TkDefaultFont', 9))  # Light teal with dark teal text
+        
+        self.file_tree.tag_configure('conflicted_file', 
+                                    background='#ffcdd2', foreground='#d32f2f',
+                                    font=('TkDefaultFont', 9, 'bold'))  # Light red with dark red text - conflicts
+        
+        self.file_tree.tag_configure('clean_file', 
+                                    background='white', foreground='black',
+                                    font=('TkDefaultFont', 9))
+        
+        # Folder colors
+        self.file_tree.tag_configure('modified_folder', 
+                                    background='#fff3e0', foreground='#e65100')
+        self.file_tree.tag_configure('new_folder', 
+                                    background='#ffebee', foreground='#c62828')
+        self.file_tree.tag_configure('staged_folder', 
+                                    background='#e8f5e8', foreground='#2e7d32')
+        self.file_tree.tag_configure('clean_folder', 
+                                    background='white', foreground='black')
+
+
+    def get_folder_git_status(self, folder_path):
+        """Get Git status for folder"""
+        has_new = False
+        has_modified = False
+        has_staged = False
+        
+        for file_path, status in self.file_status_cache.items():
+            if file_path.startswith(folder_path):
+                if status == 'NEW':
+                    has_new = True
+                elif status == 'MODIFIED':
+                    has_modified = True
+                elif status in ['STAGED', 'MODIFIED_STAGED']:
+                    has_staged = True
+        
+        if has_staged:
+            return 'STAGED'
+        elif has_modified:
+            return 'MODIFIED'
+        elif has_new:
+            return 'NEW'
+        else:
+            return 'CLEAN'
+
+
+    def update_file_status_cache_enhanced(self):
+        """Enhanced file status cache with conflict detection"""
+        if not self.repo:
+            return
+        
+        self.file_status_cache = {}
+        
+        try:
+            # Get repository status
+            status_output = self.repo.git.status('--porcelain')
+            
+            for line in status_output.split('\n'):
+                if not line.strip():
+                    continue
+                
+                status_code = line[:2]
+                file_path = line[3:]
+                full_path = os.path.join(self.repo_path, file_path)
+                
+                # Enhanced status detection
+                if status_code == 'UU':  # Both modified (merge conflict)
+                    self.file_status_cache[full_path] = 'CONFLICTED'
+                elif status_code == 'AA':  # Both added (merge conflict)
+                    self.file_status_cache[full_path] = 'CONFLICTED'
+                elif status_code == 'DD':  # Both deleted (merge conflict)
+                    self.file_status_cache[full_path] = 'CONFLICTED'
+                elif status_code[0] in ['M', 'A', 'D', 'R', 'C']:
+                    if status_code[1] in ['M', 'D']:
+                        self.file_status_cache[full_path] = 'MODIFIED_STAGED'
+                    else:
+                        self.file_status_cache[full_path] = 'STAGED'
+                elif status_code[1] in ['M', 'D']:
+                    self.file_status_cache[full_path] = 'MODIFIED'
+                elif status_code[1] == '?':
+                    self.file_status_cache[full_path] = 'NEW'
+                elif status_code[0] == 'R':
+                    self.file_status_cache[full_path] = 'RENAMED'
+                elif status_code[0] == 'C':
+                    self.file_status_cache[full_path] = 'COPIED'
+                elif status_code[0] == 'D' or status_code[1] == 'D':
+                    self.file_status_cache[full_path] = 'DELETED'
+                        
+        except Exception as e:
+            self.status_label.config(text=f"Error updating status: {str(e)}")
+
+    
+    def edit_commit_message_python_only(self, commit, new_message):
+        """Edit commit message using pure Python approach - no bash files"""
+        try:
+            # Method 1: For HEAD commit, use simple amend
+            if commit == self.repo.head.commit:
+                self.repo.git.commit('--amend', '-m', new_message)
+                self.root.after(0, lambda: messagebox.showinfo("Success", "HEAD commit message updated!"))
+                self.root.after(0, self.refresh_all)
+                return True
+            
+            # Method 2: For other commits, use Python-based rebase
+            return self.python_interactive_rebase(commit, new_message)
+            
+        except Exception as e:
+            self.root.after(0, lambda: messagebox.showerror("Error", f"Failed to edit commit: {str(e)}"))
+            return False
+
+
+    def python_interactive_rebase(self, commit, new_message):
+        """Python-only interactive rebase implementation"""
+        try:
+            # Create a backup branch
+            backup_branch = f"backup-edit-{int(time.time())}"
+            self.repo.create_head(backup_branch)
+            
+            # Get commit list from target to HEAD
+            commits_to_rebase = []
+            current = self.repo.head.commit
+            
+            while current and current != commit.parents[0] if commit.parents else None:
+                commits_to_rebase.append(current)
+                if not current.parents:
+                    break
+                current = current.parents[0]
+            
+            commits_to_rebase.reverse()  # Oldest first
+            
+            # Reset to the parent of our target commit
+            if commit.parents:
+                self.repo.git.reset('--hard', commit.parents[0].hexsha)
+            else:
+                # Root commit - create orphan branch
+                self.repo.git.checkout('--orphan', 'temp-rebase')
+            
+            # Apply commits one by one
+            for i, c in enumerate(commits_to_rebase):
+                if c == commit:
+                    # This is our target commit - use new message
+                    try:
+                        # Cherry-pick with new message
+                        self.repo.git.cherry_pick('--no-commit', c.hexsha)
+                        self.repo.git.commit('-m', new_message)
+                    except:
+                        # If cherry-pick fails, try manual commit
+                        self.repo.index.commit(new_message, author=c.author, 
+                                            author_date=c.authored_datetime,
+                                            committer=c.committer,
+                                            commit_date=c.committed_datetime)
+                else:
+                    # Regular cherry-pick
+                    try:
+                        self.repo.git.cherry_pick(c.hexsha)
+                    except subprocess.CalledProcessError:
+                        # Handle conflicts
+                        return self.handle_rebase_conflict(backup_branch)
+            
+            # Delete backup branch
+            self.repo.delete_head(backup_branch)
+            
+            self.root.after(0, lambda: messagebox.showinfo("Success", 
+                "Commit message updated successfully using Python rebase!"))
+            self.root.after(0, self.refresh_all)
+            return True
+            
+        except Exception as e:
+            # Restore from backup
+            try:
+                self.repo.git.reset('--hard', backup_branch)
+                self.repo.delete_head(backup_branch)
+            except:
+                pass
+            
+            self.root.after(0, lambda: messagebox.showerror("Python Rebase Failed", 
+                f"Failed to edit commit message: {str(e)}\n\nRepository restored from backup."))
+            return False
+
+
+    def handle_rebase_conflict(self, backup_branch):
+        """Handle conflicts during Python rebase"""
+        def show_conflict_dialog():
+            conflict_window = tk.Toplevel(self.root)
+            conflict_window.title("Rebase Conflict")
+            conflict_window.geometry("500x300")
+            
+            ttk.Label(conflict_window, text="⚠️ Rebase Conflict Detected", 
+                    font=('TkDefaultFont', 12, 'bold'), foreground='red').pack(pady=10)
+            
+            ttk.Label(conflict_window, text="There are conflicts that need to be resolved manually.\n" +
+                    "Please resolve conflicts and try again, or abort the operation.").pack(pady=10)
+            
+            button_frame = ttk.Frame(conflict_window)
+            button_frame.pack(pady=20)
+            
+            def abort_rebase():
+                try:
+                    self.repo.git.reset('--hard', backup_branch)
+                    self.repo.delete_head(backup_branch)
+                    conflict_window.destroy()
+                    messagebox.showinfo("Aborted", "Rebase aborted, repository restored.")
+                    self.refresh_all()
+                except Exception as e:
+                    messagebox.showerror("Error", f"Failed to abort: {str(e)}")
+            
+            ttk.Button(button_frame, text="Abort Rebase", command=abort_rebase, 
+                    style='Warning.TButton').pack(side=tk.LEFT, padx=10)
+            ttk.Button(button_frame, text="Close", command=conflict_window.destroy).pack(side=tk.RIGHT, padx=10)
+        
+        self.root.after(0, show_conflict_dialog)
+        return False
+
+
+    # merge
+    
+    def check_merge_status(self):
+        """Check for merge conflicts and pending merges"""
+        if not self.repo:
+            return False, []
+        
+        try:
+            # Check if we're in a merge state
+            merge_head_file = os.path.join(self.repo_path, '.git', 'MERGE_HEAD')
+            in_merge = os.path.exists(merge_head_file)
+            
+            # Get conflicted files
+            conflicted_files = []
+            status_output = self.repo.git.status('--porcelain')
+            
+            for line in status_output.split('\n'):
+                if not line.strip():
+                    continue
+                
+                status_code = line[:2]
+                file_path = line[3:]
+                
+                # Check for conflict markers
+                if status_code in ['UU', 'AA', 'DD', 'AU', 'UA', 'DU', 'UD']:
+                    conflicted_files.append(file_path)
+            
+            return in_merge, conflicted_files
+            
+        except Exception as e:
+            print(f"Error checking merge status: {e}")
+            return False, []
+
+
+    def update_merge_navbar_status(self):
+        """Update navbar with merge status indicators"""
+        in_merge, conflicted_files = self.check_merge_status()
+        
+        if in_merge or conflicted_files:
+            # Show merge indicator
+            self.show_merge_indicator(len(conflicted_files))
+        else:
+            # Hide merge indicator
+            self.hide_merge_indicator()
+
+
+    def show_merge_indicator(self, conflict_count):
+        """Show merge conflict indicator in toolbar"""
+        if not hasattr(self, 'merge_indicator_frame'):
+            # Create merge indicator frame
+            self.merge_indicator_frame = ttk.Frame(self.root)
+            self.merge_indicator_frame.pack(side=tk.TOP, fill=tk.X, after=self.repo_label.master)
+            
+            # Warning background
+            self.merge_indicator_frame.configure(style='Warning.TFrame')
+        
+        # Clear existing widgets
+        for widget in self.merge_indicator_frame.winfo_children():
+            widget.destroy()
+        
+        # Create warning bar
+        warning_frame = ttk.Frame(self.merge_indicator_frame)
+        warning_frame.configure(style='Warning.TFrame')
+        warning_frame.pack(fill=tk.X, padx=5, pady=2)
+        
+        # Warning icon and text
+        if conflict_count > 0:
+            warning_text = f"⚠️ MERGE CONFLICTS: {conflict_count} files need resolution"
+            style = 'Conflict.TLabel'
+        else:
+            warning_text = "🔄 MERGE IN PROGRESS: Commit when ready"
+            style = 'Merge.TLabel'
+        
+        warning_label = ttk.Label(warning_frame, text=warning_text, style=style)
+        warning_label.pack(side=tk.LEFT, padx=10)
+        
+        # Action buttons
+        ttk.Button(warning_frame, text="View Conflicts", 
+                command=self.show_merge_conflicts_dialog,
+                style='Warning.TButton').pack(side=tk.LEFT, padx=5)
+        
+        if conflict_count == 0:
+            ttk.Button(warning_frame, text="Complete Merge", 
+                    command=self.complete_merge,
+                    style='Success.TButton').pack(side=tk.LEFT, padx=5)
+        
+        ttk.Button(warning_frame, text="Abort Merge", 
+                command=self.abort_merge,
+                style='Secondary.TButton').pack(side=tk.LEFT, padx=5)
+        
+        # Configure warning styles
+        self.configure_warning_styles()
+
+
+    def hide_merge_indicator(self):
+        """Hide merge conflict indicator"""
+        if hasattr(self, 'merge_indicator_frame'):
+            self.merge_indicator_frame.destroy()
+            delattr(self, 'merge_indicator_frame')
+
+
+    def configure_warning_styles(self):
+        """Configure warning and merge indicator styles"""
+        style = ttk.Style()
+        
+        # Warning frame style
+        style.configure('Warning.TFrame', background='#fff3cd', relief='solid', borderwidth=1)
+        
+        # Conflict label style
+        style.configure('Conflict.TLabel', 
+                    background='#fff3cd', foreground='#856404',
+                    font=('TkDefaultFont', 10, 'bold'))
+        
+        # Merge label style
+        style.configure('Merge.TLabel', 
+                    background='#d1ecf1', foreground='#0c5460',
+                    font=('TkDefaultFont', 10, 'bold'))
+
+
+    def show_merge_conflicts_dialog(self):
+        """Show dialog with merge conflicts"""
+        in_merge, conflicted_files = self.check_merge_status()
+        
+        if not conflicted_files:
+            messagebox.showinfo("No Conflicts", "No merge conflicts found.")
+            return
+        
+        # Create conflicts dialog
+        conflicts_window = tk.Toplevel(self.root)
+        conflicts_window.title("Merge Conflicts")
+        conflicts_window.geometry("800x600")
+        
+        # Header
+        ttk.Label(conflicts_window, text="Files with Merge Conflicts", 
+                font=('TkDefaultFont', 12, 'bold')).pack(pady=10)
+        
+        # Conflicts list
+        conflicts_frame = ttk.Frame(conflicts_window)
+        conflicts_frame.pack(fill=tk.BOTH, expand=True, padx=20, pady=10)
+        
+        conflicts_tree = ttk.Treeview(conflicts_frame, columns=('File', 'Status'), show='headings')
+        conflicts_tree.heading('File', text='File Path')
+        conflicts_tree.heading('Status', text='Conflict Type')
+        
+        conflicts_scroll = ttk.Scrollbar(conflicts_frame, orient=tk.VERTICAL, command=conflicts_tree.yview)
+        conflicts_tree.configure(yscrollcommand=conflicts_scroll.set)
+        
+        # Populate conflicts
+        for file_path in conflicted_files:
+            status = self.get_conflict_status(file_path)
+            conflicts_tree.insert('', 'end', values=(file_path, status))
+        
+        conflicts_tree.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        conflicts_scroll.pack(side=tk.RIGHT, fill=tk.Y)
+        
+        # Action buttons
+        button_frame = ttk.Frame(conflicts_window)
+        button_frame.pack(fill=tk.X, padx=20, pady=10)
+        
+        def open_conflict_file():
+            selection = conflicts_tree.selection()
+            if selection:
+                file_path = conflicts_tree.item(selection[0])['values'][0]
+                full_path = os.path.join(self.repo_path, file_path)
+                try:
+                    subprocess.run(['code', full_path], check=True)
+                except:
+                    messagebox.showerror("Error", "Could not open VS Code")
+        
+        ttk.Button(button_frame, text="Open in VS Code", command=open_conflict_file).pack(side=tk.LEFT, padx=5)
+        ttk.Button(button_frame, text="Refresh", command=lambda: self.refresh_conflicts_list(conflicts_tree)).pack(side=tk.LEFT, padx=5)
+        ttk.Button(button_frame, text="Close", command=conflicts_window.destroy).pack(side=tk.RIGHT, padx=5)
+
+
+    def get_conflict_status(self, file_path):
+        """Get human-readable conflict status"""
+        try:
+            status_output = self.repo.git.status('--porcelain')
+            for line in status_output.split('\n'):
+                if file_path in line:
+                    status_code = line[:2]
+                    if status_code == 'UU':
+                        return 'Both Modified'
+                    elif status_code == 'AA':
+                        return 'Both Added'
+                    elif status_code == 'DD':
+                        return 'Both Deleted'
+                    elif status_code == 'AU':
+                        return 'Added by Us'
+                    elif status_code == 'UA':
+                        return 'Added by Them'
+                    elif status_code == 'DU':
+                        return 'Deleted by Us'
+                    elif status_code == 'UD':
+                        return 'Deleted by Them'
+            return 'Unknown Conflict'
+        except:
+            return 'Unknown'
+
+
+    def complete_merge(self):
+        """Complete the merge process"""
+        try:
+            # Check if there are still conflicts
+            in_merge, conflicted_files = self.check_merge_status()
+            
+            if conflicted_files:
+                messagebox.showerror("Conflicts Remain", 
+                    f"Cannot complete merge. {len(conflicted_files)} files still have conflicts.")
+                return
+            
+            # Get merge commit message
+            merge_msg = simpledialog.askstring("Merge Commit", "Enter merge commit message:", 
+                                            initialvalue="Merge branch")
+            
+            if merge_msg:
+                self.repo.git.commit('-m', merge_msg)
+                messagebox.showinfo("Merge Complete", "Merge completed successfully!")
+                self.refresh_all()
+                self.update_merge_navbar_status()
+        
+        except Exception as e:
+            messagebox.showerror("Merge Error", f"Failed to complete merge: {str(e)}")
+
+
+    def abort_merge(self):
+        """Abort the merge process"""
+        if messagebox.askyesno("Abort Merge", "Are you sure you want to abort the merge?"):
+            try:
+                self.repo.git.merge('--abort')
+                messagebox.showinfo("Merge Aborted", "Merge has been aborted.")
+                self.refresh_all()
+                self.update_merge_navbar_status()
+            except Exception as e:
+                messagebox.showerror("Abort Error", f"Failed to abort merge: {str(e)}")
+
+    
+    def create_enhanced_toolbar(self):
+        """Enhanced toolbar with operation-aware buttons"""
+        toolbar = ttk.Frame(self.root)
+        toolbar.pack(side=tk.TOP, fill=tk.X, padx=5, pady=2)
+        
+        # Repository info (same as before)
+        ttk.Label(toolbar, text="Repository:").pack(side=tk.LEFT, padx=5)
+        self.repo_label = ttk.Label(toolbar, text=self.repo_path, font=('TkDefaultFont', 9, 'bold'))
+        self.repo_label.pack(side=tk.LEFT, padx=5)
+        
+        ttk.Separator(toolbar, orient=tk.VERTICAL).pack(side=tk.LEFT, fill=tk.Y, padx=10)
+        
+        # Branch info
+        branch_frame = ttk.Frame(toolbar)
+        branch_frame.pack(side=tk.LEFT, padx=10)
+        
+        ttk.Label(branch_frame, text="Current:", font=('TkDefaultFont', 9)).pack(side=tk.LEFT)
+        self.branch_label = ttk.Label(branch_frame, text="", font=('TkDefaultFont', 10, 'bold'), 
+                                    foreground='#007bff')
+        self.branch_label.pack(side=tk.LEFT, padx=(5,0))
+        
+        ttk.Separator(toolbar, orient=tk.VERTICAL).pack(side=tk.LEFT, fill=tk.Y, padx=10)
+        
+        # Enhanced action buttons with operation states
+        self.pull_button = ttk.Button(toolbar, text="Pull", command=self.enhanced_git_pull)
+        self.pull_button.pack(side=tk.LEFT, padx=2)
+        
+        self.push_button = ttk.Button(toolbar, text="Push", command=self.enhanced_git_push)
+        self.push_button.pack(side=tk.LEFT, padx=2)
+        
+        self.commit_button = ttk.Button(toolbar, text="Commit", command=self.enhanced_git_commit)
+        self.commit_button.pack(side=tk.LEFT, padx=2)
+        
+        self.add_all_button = ttk.Button(toolbar, text="Add All", command=self.enhanced_git_add_all)
+        self.add_all_button.pack(side=tk.LEFT, padx=2)
+        
+        self.refresh_button = ttk.Button(toolbar, text="Refresh", command=self.enhanced_refresh_all)
+        self.refresh_button.pack(side=tk.LEFT, padx=2)
+        
+        # Right side info (same as before)
+        right_info_frame = ttk.Frame(toolbar)
+        right_info_frame.pack(side=tk.RIGHT, padx=5)
+        
+        self.remote_label = ttk.Label(right_info_frame, text="", font=('TkDefaultFont', 8))
+        self.remote_label.pack(anchor=tk.E)
+        
+        user_frame = ttk.Frame(right_info_frame)
+        user_frame.pack(anchor=tk.E)
+        
+        self.user_label = ttk.Label(user_frame, text="", font=('TkDefaultFont', 8))
+        self.user_label.pack(side=tk.LEFT)
+        
+        ttk.Button(user_frame, text="Config", command=self.show_config, width=8).pack(side=tk.LEFT, padx=(5,0))
+
+
+    def set_button_operating_state(self, button, operation_name):
+        """Set button to operating state"""
+        button.configure(text=f"{operation_name}...", style='Operating.TButton', state=tk.DISABLED)
+
+
+    def reset_button_state(self, button, original_text):
+        """Reset button to normal state"""
+        button.configure(text=original_text, style='TButton', state=tk.NORMAL)
+
+
+    def enhanced_git_pull(self):
+        """Enhanced git pull with visual feedback"""
+        self.set_button_operating_state(self.pull_button, "Pulling")
+        
+        def pull_worker():
+            try:
+                self.repo.remotes.origin.pull()
+                self.root.after(0, lambda: self.complete_operation(self.pull_button, "Pull", "Pull completed successfully"))
+            except Exception as e:
+                self.root.after(0, lambda: self.handle_operation_error(self.pull_button, "Pull", str(e)))
+        
+        threading.Thread(target=pull_worker, daemon=True).start()
+
+
+    def enhanced_git_push(self):
+        """Enhanced git push with visual feedback"""
+        self.set_button_operating_state(self.push_button, "Pushing")
+        
+        def push_worker():
+            try:
+                self.repo.remotes.origin.push()
+                self.root.after(0, lambda: self.complete_operation(self.push_button, "Push", "Push completed successfully"))
+            except Exception as e:
+                self.root.after(0, lambda: self.handle_operation_error(self.push_button, "Push", str(e)))
+        
+        threading.Thread(target=push_worker, daemon=True).start()
+
+
+    def enhanced_git_commit(self):
+        """Enhanced git commit with visual feedback"""
+        self.set_button_operating_state(self.commit_button, "Committing")
+        
+        # Get commit message first
+        message = simpledialog.askstring("Commit Message", "Enter commit message:")
+        if not message:
+            self.reset_button_state(self.commit_button, "Commit")
+            return
+        
+        def commit_worker():
+            try:
+                self.repo.index.commit(message)
+                self.root.after(0, lambda: self.complete_operation(self.commit_button, "Commit", "Commit completed successfully"))
+            except Exception as e:
+                self.root.after(0, lambda: self.handle_operation_error(self.commit_button, "Commit", str(e)))
+        
+        threading.Thread(target=commit_worker, daemon=True).start()
+
+
+    def enhanced_git_add_all(self):
+        """Enhanced git add all with visual feedback"""
+        self.set_button_operating_state(self.add_all_button, "Adding")
+        
+        def add_worker():
+            try:
+                self.repo.git.add('-A')
+                self.root.after(0, lambda: self.complete_operation(self.add_all_button, "Add All", "All changes added to staging"))
+            except Exception as e:
+                self.root.after(0, lambda: self.handle_operation_error(self.add_all_button, "Add All", str(e)))
+        
+        threading.Thread(target=add_worker, daemon=True).start()
+
+
+    def enhanced_refresh_all(self):
+        """Enhanced refresh with visual feedback"""
+        self.set_button_operating_state(self.refresh_button, "Refreshing")
+        
+        def refresh_worker():
+            try:
+                time.sleep(0.5)  # Brief delay to show the state change
+                self.root.after(0, self.refresh_all_data)
+                self.root.after(0, lambda: self.complete_operation(self.refresh_button, "Refresh", "Repository refreshed"))
+            except Exception as e:
+                self.root.after(0, lambda: self.handle_operation_error(self.refresh_button, "Refresh", str(e)))
+        
+        threading.Thread(target=refresh_worker, daemon=True).start()
+
+
+    def complete_operation(self, button, operation_name, success_message):
+        """Complete operation with success feedback"""
+        self.reset_button_state(button, operation_name)
+        self.status_label.config(text=f"✓ {success_message}")
+        self.update_merge_navbar_status()  # Check for merge status after operations
+
+
+    def handle_operation_error(self, button, operation_name, error_message):
+        """Handle operation error with feedback"""
+        self.reset_button_state(button, operation_name)
+        self.status_label.config(text=f"✗ {operation_name} failed: {error_message}")
+        messagebox.showerror(f"{operation_name} Error", error_message)
+
+
+    def refresh_all_data(self):
+        """Refresh all data components"""
+        self.update_file_status_cache_enhanced()
+        self.populate_repository_tree()
+        self.populate_changes()
+        
+        # Refresh current file list if a folder is selected
+        tree_selection = self.repo_tree.selection()
+        if tree_selection:
+            tree_item = self.repo_tree.item(tree_selection[0])
+            values = tree_item['values']
+            if values:
+                folder_path = values[0]
+                self.populate_file_list_enhanced(folder_path)
+
+
+    # ==========================================
+    # 5. INTEGRATION METHODS
+    # ==========================================
+
+    def setup_enhanced_refresh_cycle(self):
+        """Setup enhanced refresh cycle with merge detection"""
+        def refresh_cycle():
+            if self.repo:
+                self.update_file_status_cache_enhanced()
+                self.update_merge_navbar_status()
+            
+            # Schedule next refresh
+            self.root.after(5000, refresh_cycle)  # Every 5 seconds
+        
+        # Start the cycle
+        refresh_cycle()
+###
 
 
 
