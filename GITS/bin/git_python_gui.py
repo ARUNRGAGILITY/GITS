@@ -233,62 +233,8 @@ class GitPythonGUI:
         help_menu = tk.Menu(menubar, tearoff=0)
         menubar.add_cascade(label="Help", menu=help_menu)
         help_menu.add_command(label="About", command=self.show_about)
-
     
-    def create_toolbar(self):
-        """Create toolbar with common operations"""
-        toolbar = ttk.Frame(self.root)
-        toolbar.pack(side=tk.TOP, fill=tk.X, padx=5, pady=2)
-        
-        # Repository info
-        ttk.Label(toolbar, text="Repository:").pack(side=tk.LEFT, padx=5)
-        self.repo_label = ttk.Label(toolbar, text=self.repo_path, font=('TkDefaultFont', 9, 'bold'))
-        self.repo_label.pack(side=tk.LEFT, padx=5)
-        
-        ttk.Separator(toolbar, orient=tk.VERTICAL).pack(side=tk.LEFT, fill=tk.Y, padx=10)
-        
-        # Branch info with better styling
-        branch_frame = ttk.Frame(toolbar)
-        branch_frame.pack(side=tk.LEFT, padx=10)
-        
-        ttk.Label(branch_frame, text="Current:", font=('TkDefaultFont', 9)).pack(side=tk.LEFT)
-        self.branch_label = ttk.Label(branch_frame, text="", font=('TkDefaultFont', 10, 'bold'), 
-                                     foreground='#007bff')  # Blue color
-        self.branch_label.pack(side=tk.LEFT, padx=(5,0))
-        
-        ttk.Separator(toolbar, orient=tk.VERTICAL).pack(side=tk.LEFT, fill=tk.Y, padx=10)
-        
-        # Action buttons with status indicators
-        self.pull_button = ttk.Button(toolbar, text="Pull", command=self.git_pull)
-        self.pull_button.pack(side=tk.LEFT, padx=2)
-        
-        self.push_button = ttk.Button(toolbar, text="Push", command=self.git_push)
-        self.push_button.pack(side=tk.LEFT, padx=2)
-        
-        self.commit_button = ttk.Button(toolbar, text="Commit", command=self.git_commit)
-        self.commit_button.pack(side=tk.LEFT, padx=2)
-        
-        ttk.Button(toolbar, text="Add All", command=self.git_add_all).pack(side=tk.LEFT, padx=2)
-        ttk.Button(toolbar, text="Refresh", command=self.refresh_all).pack(side=tk.LEFT, padx=2)
-        
-        # Config and Remote info (right side) - vertical layout
-        right_info_frame = ttk.Frame(toolbar)
-        right_info_frame.pack(side=tk.RIGHT, padx=5)
-        
-        # Remote URL (top line)
-        self.remote_label = ttk.Label(right_info_frame, text="", font=('TkDefaultFont', 8))
-        self.remote_label.pack(anchor=tk.E)
-        
-        # User info (bottom line)
-        user_frame = ttk.Frame(right_info_frame)
-        user_frame.pack(anchor=tk.E)
-        
-        self.user_label = ttk.Label(user_frame, text="", font=('TkDefaultFont', 8))
-        self.user_label.pack(side=tk.LEFT)
-        
-        # Config button
-        ttk.Button(user_frame, text="Config", command=self.show_config, width=8).pack(side=tk.LEFT, padx=(5,0))
-    
+     
     def create_main_layout(self):
         """Create main layout with panes"""
         # Main container
@@ -1312,39 +1258,7 @@ class GitPythonGUI:
         # Add folders recursively
         self.add_tree_nodes(root_item, self.repo_path)
     
-    def update_file_status_cache(self):
-        """Update cache of file statuses"""
-        if not self.repo:
-            return
         
-        self.file_status_cache = {}
-        
-        try:
-            # Get repository status
-            status_output = self.repo.git.status('--porcelain')
-            
-            for line in status_output.split('\n'):
-                if not line.strip():
-                    continue
-                
-                status_code = line[:2]
-                file_path = line[3:]
-                full_path = os.path.join(self.repo_path, file_path)
-                
-                # Determine status
-                if status_code[0] in ['M', 'A', 'D', 'R', 'C']:
-                    if status_code[1] in ['M', 'D']:
-                        self.file_status_cache[full_path] = 'MODIFIED_STAGED'
-                    else:
-                        self.file_status_cache[full_path] = 'STAGED'
-                elif status_code[1] in ['M', 'D']:
-                    self.file_status_cache[full_path] = 'MODIFIED'
-                elif status_code[1] == '?':
-                    self.file_status_cache[full_path] = 'NEW'
-                    
-        except Exception as e:
-            self.status_label.config(text=f"Error updating status: {str(e)}")
-    
     def get_folder_status(self, folder_path):
         """Get status indicator for folder"""
         has_new = False
@@ -1399,72 +1313,7 @@ class GitPythonGUI:
                 # If no values, try to reconstruct path
                 self.refresh_all()
     
-    def populate_file_list(self, folder_path):
-        """Populate file list for selected folder with status highlighting"""
-        # Clear existing items
-        for item in self.file_tree.get_children():
-            self.file_tree.delete(item)
         
-        if not os.path.exists(folder_path):
-            return
-        
-        try:
-            for item in sorted(os.listdir(folder_path)):
-                if item.startswith('.'):
-                    continue
-                
-                item_path = os.path.join(folder_path, item)
-                
-                # Get file status
-                file_status = self.file_status_cache.get(item_path, 'CLEAN')
-                
-                # Get file info
-                if os.path.isfile(item_path):
-                    size = os.path.getsize(item_path)
-                    size_str = self.format_file_size(size)
-                    modified = datetime.fromtimestamp(os.path.getmtime(item_path)).strftime('%Y-%m-%d %H:%M')
-                    
-                    # Get Git info
-                    branch_info, commit_info, version_info, author_info, commit_date = self.get_git_file_info(item_path)
-                    
-                    # Choose icon based on file type and status
-                    icon = self.get_file_icon(item_path, file_status)
-                    
-                    # Choose background color for highlighting
-                    if file_status == 'NEW':
-                        tags = ('new_file',)
-                        self.highlighted_files.add(item_path)
-                    elif file_status == 'MODIFIED':
-                        tags = ('modified_file',)
-                        self.highlighted_files.add(item_path)
-                    elif file_status == 'STAGED':
-                        tags = ('staged_file',)
-                        self.highlighted_files.add(item_path)
-                    elif file_status == 'MODIFIED_STAGED':
-                        tags = ('modified_staged_file',)
-                        self.highlighted_files.add(item_path)
-                    else:
-                        tags = ('clean_file',)
-                    
-                    file_item = self.file_tree.insert('', 'end', text=icon, 
-                                        values=(item, 'File', size_str, modified, branch_info, version_info, author_info, commit_info, commit_date),
-                                        tags=tags)
-                    
-                elif os.path.isdir(item_path):
-                    folder_icon = self.get_folder_status(item_path)
-                    self.file_tree.insert('', 'end', text=folder_icon, 
-                                        values=(item, 'Folder', '', '', '', '', '', '', ''))
-            
-            # Configure tag colors with more vibrant highlighting
-            self.file_tree.tag_configure('new_file', background='#ffdddd', foreground='#cc0000')  # Light red with dark red text
-            self.file_tree.tag_configure('modified_file', background='#fff3cd', foreground='#856404')  # Light yellow with dark yellow text
-            self.file_tree.tag_configure('staged_file', background='#d4edda', foreground='#155724')  # Light green with dark green text
-            self.file_tree.tag_configure('modified_staged_file', background='#cce5ff', foreground='#004085')  # Light blue with dark blue text
-            self.file_tree.tag_configure('clean_file', background='white', foreground='black')
-            
-        except PermissionError:
-            self.status_label.config(text="Permission denied accessing folder")
-    
     def schedule_highlight_clear(self):
         """Schedule clearing of file highlights after 5 seconds"""
         if hasattr(self, 'highlight_timer'):
@@ -3774,123 +3623,7 @@ Inspired by Simple VCS version control system.
         new_msg_text.focus_set()
 
 
-    def edit_commit_message_safe(self, commit, new_message):
-        """Safe interactive rebase for editing commit messages"""
-        try:
-            # Create a temporary script for the rebase
-            temp_dir = tempfile.mkdtemp()
-            script_path = os.path.join(temp_dir, 'git_editor.py')
-            
-            # Create Python script instead of bash for better cross-platform support
-            script_content = f'''#!/usr/bin/env python3
-    import sys
-    import os
-
-    if len(sys.argv) != 2:
-        sys.exit(1)
-
-    filename = sys.argv[1]
-    basename = os.path.basename(filename)
-
-    # Handle git-rebase-todo file
-    if basename == 'git-rebase-todo':
-        with open(filename, 'r') as f:
-            content = f.read()
-        
-        # Replace 'pick' with 'reword' for our target commit
-        lines = content.split('\\n')
-        for i, line in enumerate(lines):
-            if line.startswith('pick {commit.hexsha[:7]}'):
-                lines[i] = line.replace('pick', 'reword', 1)
-                break
-        
-        with open(filename, 'w') as f:
-            f.write('\\n'.join(lines))
-
-    # Handle COMMIT_EDITMSG file
-    elif basename == 'COMMIT_EDITMSG':
-        # Check if this is our target commit by looking at the content
-        with open(filename, 'r') as f:
-            current_content = f.read().strip()
-        
-        # If it matches our target commit's message, replace it
-        if current_content.startswith('{commit.message.strip()[:50]}'):
-            with open(filename, 'w') as f:
-                f.write('{new_message}\\n')
-
-    sys.exit(0)
-    '''
-            
-            with open(script_path, 'w') as f:
-                f.write(script_content)
-            
-            # Make script executable
-            os.chmod(script_path, 0o755)
-            
-            # Get the parent commit
-            parent_commit = commit.parents[0] if commit.parents else None
-            
-            # Set up environment
-            env = os.environ.copy()
-            env['GIT_EDITOR'] = f'python "{script_path}"'
-            env['GIT_SEQUENCE_EDITOR'] = f'python "{script_path}"'
-            
-            # Run interactive rebase
-            if parent_commit:
-                cmd = ['git', 'rebase', '-i', parent_commit.hexsha]
-            else:
-                cmd = ['git', 'rebase', '-i', '--root']
-            
-            # Run the rebase
-            result = subprocess.run(cmd, cwd=self.repo_path, env=env, 
-                                capture_output=True, text=True)
-            
-            # Clean up
-            try:
-                os.unlink(script_path)
-                os.rmdir(temp_dir)
-            except:
-                pass
-            
-            if result.returncode == 0:
-                self.root.after(0, lambda: messagebox.showinfo("Success", 
-                    "Commit message updated successfully!\n\nNote: Git history has been rewritten."))
-            else:
-                error_msg = result.stderr or result.stdout or "Unknown error during rebase"
-                self.root.after(0, lambda: messagebox.showerror("Rebase Error", 
-                    f"Failed to edit commit message:\n\n{error_msg}\n\nYou may need to resolve conflicts manually."))
-            
-        except Exception as e:
-            self.root.after(0, lambda: messagebox.showerror("Error", f"Unexpected error: {str(e)}"))
-
-
-    def is_commit_editing_safe(self):
-        """Check if commit editing is safe (no remote tracking or unpushed commits)"""
-        try:
-            # Check if we have a remote
-            if not self.repo.remotes:
-                return True, "No remote repository configured - safe to edit"
-            
-            # Check if current branch has upstream
-            try:
-                current_branch = self.repo.active_branch
-                if not current_branch.tracking_branch():
-                    return True, "No upstream branch - safe to edit"
-                
-                # Check if there are unpushed commits
-                unpushed = list(self.repo.iter_commits(f'{current_branch.tracking_branch()}..{current_branch}'))
-                if unpushed:
-                    return False, f"You have {len(unpushed)} unpushed commits - editing is risky"
-                else:
-                    return False, "All commits are pushed - editing will rewrite shared history"
-                    
-            except:
-                return True, "Cannot determine upstream status - proceed with caution"
-                
-        except Exception as e:
-            return None, f"Error checking safety: {str(e)}"
-
-
+    
     def show_commit_edit_safety_dialog(self):
         """Show dialog about commit editing safety"""
         safe, message = self.is_commit_editing_safe()
