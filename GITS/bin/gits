@@ -6,6 +6,7 @@
 # Get the directory where this script is located
 #SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SCRIPT_DIR=/d/INSTALLS/GIT_GUI/GITS/bin
+SCRIPT_DIR=/d/ARG_TRAINING_DELL_MC/GITHUB/GITS/GITS/bin
 # Path to the Python GUI script
 GUI_SCRIPT="$SCRIPT_DIR/git_python_gui.py"
 
